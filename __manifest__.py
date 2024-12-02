@@ -8,7 +8,9 @@
     'category': 'Website',
     'depends': ['base'],
     'data': [
+        'security/ir.model.access.csv',
         'views/nexamerchant_view.xml',
+        'data/nexamerchant_data.xml',
     ],
     'installable': True,
     'application': True,
