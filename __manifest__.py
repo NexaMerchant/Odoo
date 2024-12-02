@@ -11,6 +11,12 @@
         'views/nexamerchant_view.xml',
         'data/nexamerchant_data.xml',
     ],
+
+    "post_load": None,
+    "pre_init_hook": None,
+    "post_init_hook": None,
+    "uninstall_hook": None,
+
     'installable': True,
     'application': True,
     'auto_install': False,
