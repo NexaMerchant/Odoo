@@ -8,6 +8,9 @@
                     <group>
                         <field name="name"/>
                         <field name="description"/>
+                        <field name="api_url"/>
+                        <field name="api_key"/>
+                        <field name="api_secret"/>
                     </group>
                 </sheet>
             </form>
@@ -21,6 +24,9 @@
             <tree string="Nexa Merchant">
                 <field name="name"/>
                 <field name="description"/>
+                <field name="api_url"/>
+                <field name="api_key"/>
+                <field name="api_secret"/>
             </tree>
         </field>
     </record>
