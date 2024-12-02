@@ -1,0 +1,36 @@
+<odoo>
+    <record id="view_nexamerchant_form" model="ir.ui.view">
+        <field name="name">nexamerchant.form</field>
+        <field name="model">nexamerchant.merchant</field>
+        <field name="arch" type="xml">
+            <form string="Nexa Merchant">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="description"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_nexamerchant_tree" model="ir.ui.view">
+        <field name="name">nexamerchant.tree</field>
+        <field name="model">nexamerchant.merchant</field>
+        <field name="arch" type="xml">
+            <tree string="Nexa Merchant">
+                <field name="name"/>
+                <field name="description"/>
+            </tree>
+        </field>
+    </record>
+
+    <menuitem id="menu_nexamerchant_root" name="Nexa Merchant"/>
+    <menuitem id="menu_nexamerchant" name="Merchants" parent="menu_nexamerchant_root" action="action_nexamerchant"/>
+
+    <record id="action_nexamerchant" model="ir.actions.act_window">
+        <field name="name">Merchants</field>
+        <field name="res_model">nexamerchant.merchant</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>
