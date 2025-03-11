@@ -17,6 +17,10 @@ class OrderController(http.Controller):
         try:
             request_data = json.loads(request.httprequest.data)
 
+            order = request_data.get('order')
+
+            order_lines = order.get('order_lines')
+
             # create product in odoo
 
             # create order in odoo
@@ -33,7 +37,7 @@ class OrderController(http.Controller):
 
 
 
-            return {'order': request_data}
+            return {'order': order}
         except Exception as e:
             return {'error': str(e)}
 
