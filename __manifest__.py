@@ -6,10 +6,9 @@
     'author': 'Steve Liu',
     'website': 'https://github.com/NexaMerchant',
     'category': 'Website',
-    'depends': ['base'],
+    "depends": ["base", "web"],
     'data': [
-        'views/nexamerchant_view.xml',
-        'data/nexamerchant_data.xml',
+
     ],
 
     "post_load": None,

@@ -25,7 +25,7 @@ class NexaMerchantOrders(models.Model):
             with self.env.cr.savepoint():
                 return func()
         except Exception as e:
-            raise UserError(f"Transaction failed: {str(e}")
+            raise UserError(f"Transaction failed: {str(e)}")
 
     def perform_transaction(self):
         def transaction_logic():
