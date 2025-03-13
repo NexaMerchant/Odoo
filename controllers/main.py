@@ -51,12 +51,22 @@ class OrderController(http.Controller):
 
         pass
 
-    @http.route('/api/order/<int:order_id>', type='json', auth='public', methods=['PUT'], csrf=False)
+    @http.route('/api/nexamerchant/order/<int:order_id>', type='json', auth='public', methods=['PUT'], csrf=False)
     def update_order(self, order_id, **kwargs):
         # 处理更新订单的逻辑
         pass
 
-    @http.route('/api/order/<int:order_id>', type='json', auth='public', methods=['GET'], csrf=False)
+    @http.route('/api/nexamerchant/order/<int:order_id>', type='json', auth='public', methods=['GET'], csrf=False)
     def get_order(self, order_id):
         # 处理获取订单的逻辑
+        pass
+
+    @http.route('/api/nexamerchant/order/<int:order_id>', type='json', auth='public', methods=['DELETE'], csrf=False)
+    def delete_order(self, order_id):
+        # 处理删除订单的逻辑
+        pass
+    
+    @http.route('/api/nexamerchant/product', type='json', auth='public', methods=['POST'], csrf=False)
+    def create_product(self, **kwargs):
+        # 处理创建产品的逻辑
         pass
