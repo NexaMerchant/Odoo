@@ -1,6 +1,7 @@
 import json
 from odoo import http
 from odoo.http import request
+from odoo.exceptions import UserError
 
 class OrderController(http.Controller):
     _name = 'nexamerchant.order'
@@ -68,43 +69,23 @@ class OrderController(http.Controller):
 
     @http.route('/api/nexamerchant/product', type='json', auth='public', methods=['POST'], csrf=False)
     def create_product(self, **kwargs):
-        # 处理创建产品的逻辑
         # @link https://shopify.dev/docs/api/admin-rest/2025-01/resources/product
-
-        # Get all the product data from the request
-
-
-        # Create the product in the database
-        # Return the product data in the response
-
         try:
+            data = json.loads(request.httprequest.data)
 
-          request_data = json.loads(request.httprequest.data)
+            # Basic validation
+            if not data or not data.get('product_id') or not data.get('title'):
+                return {'success': False, 'message': 'Missing product_id or title in request'}
 
-          sku = request_data.get('sku')
+            # Call the model method to handle product creation/update logic
+            product_api_logic = request.env['product.api.logic']
+            product = product_api_logic.create_or_update_product(data)
 
-          # base use sku to search the odoo product
-          # if not exist create product
-          # if exist update product
+            return {'success': True, 'message': f'Product created/updated successfully. Product ID: {product.id}'}
 
-          product = request.env['product.product'].search([('default_code', '=', sku)])
-
-          if not product:
-              product = request.env['product.product'].create({'default_code': sku})
-
-              # add variant to product
-              # add price to product
-              # add name to product
-              # add description to product
-              # add image to product
-   
-          else:
-
-
-
-
-          return {"sku": sku}
-
+        except UserError as e:  # Catch UserError from the model
+            return {'success': False, 'message': str(e)}
         except Exception as e:
-            return {'error': str(e)}
+            return {'success': False, 'message': f'An unexpected error occurred: {str(e)}'}
+
         pass

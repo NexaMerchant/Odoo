@@ -1,3 +1,3 @@
 # Initialize the module
-from . import models
 from . import controllers
+from . import models
