@@ -65,8 +65,46 @@ class OrderController(http.Controller):
     def delete_order(self, order_id):
         # 处理删除订单的逻辑
         pass
-    
+
     @http.route('/api/nexamerchant/product', type='json', auth='public', methods=['POST'], csrf=False)
     def create_product(self, **kwargs):
         # 处理创建产品的逻辑
+        # @link https://shopify.dev/docs/api/admin-rest/2025-01/resources/product
+
+        # Get all the product data from the request
+
+
+        # Create the product in the database
+        # Return the product data in the response
+
+        try:
+
+          request_data = json.loads(request.httprequest.data)
+
+          sku = request_data.get('sku')
+
+          # base use sku to search the odoo product
+          # if not exist create product
+          # if exist update product
+
+          product = request.env['product.product'].search([('default_code', '=', sku)])
+
+          if not product:
+              product = request.env['product.product'].create({'default_code': sku})
+
+              # add variant to product
+              # add price to product
+              # add name to product
+              # add description to product
+              # add image to product
+   
+          else:
+
+
+
+
+          return {"sku": sku}
+
+        except Exception as e:
+            return {'error': str(e)}
         pass
