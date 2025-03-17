@@ -8,7 +8,7 @@
     'category': 'Website',
     "depends": ["base", "web"],
     'data': [
-
+        'security/ir.model.access.csv',
     ],
 
     "post_load": None,

@@ -22,13 +22,16 @@ class ProductAPILogic(models.Model):
             # Main Product Data
             product_data = {
                 'name': data.get('title'),
+                'description': data.get('body_html'),
+                'type': 'product',
+                'is_storable': True,
                 'default_code': data.get('sku'),
                 'list_price': float(data.get('price', 0.0)),  # Use list_price for sale price
                 'weight': float(data.get('weight', 0.0)) if data.get('weight') else 0.0,
             }
 
             # Check if a product with the same external ID already exists
-            existing_product = self.env['product.template'].search([('product_id', '=', data.get('product_id'))],
+            existing_product = self.env['product.template'].search([('default_code', '=', data.get('sku'))],
                                                                    limit=1)
 
             if existing_product:

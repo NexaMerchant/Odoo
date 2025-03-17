@@ -67,11 +67,15 @@ class OrderController(http.Controller):
         # 处理删除订单的逻辑
         pass
 
-    @http.route('/api/nexamerchant/product', type='json', auth='public', methods=['POST'], csrf=False)
+    @http.route('/api/nexamerchant/product', type='json', auth='public', methods=['POST'])
     def create_product(self, **kwargs):
         # @link https://shopify.dev/docs/api/admin-rest/2025-01/resources/product
         try:
             data = json.loads(request.httprequest.data)
+
+            # set uid to 2 to bypass access rights
+            request.uid = 2
+            
 
             # Basic validation
             if not data or not data.get('product_id') or not data.get('title'):

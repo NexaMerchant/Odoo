@@ -1,0 +1,2 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_nexamerchant_product_template_public,nexamerchant_product_template_public,product.model_product_template,base.group_public,1,1,1,1
