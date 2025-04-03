@@ -20,12 +20,6 @@ class OrderController(http.Controller):
     def create_order(self, **kwargs):
         """
         创建订单接口
-        返回格式: {
-            'success': bool,
-            'message': str,
-            'order_code': str,
-            'order_id': int
-        }
         """
         response = {
             'success': False,
@@ -33,10 +27,6 @@ class OrderController(http.Controller):
             'order_code': '',
             'order_id': 0
         }
-
-        # return response
-
-        # return response
 
         try:
             # 获取请求数据
@@ -114,17 +104,6 @@ class OrderController(http.Controller):
                 'order_id': order_id
             })
 
-            # return Response(
-            #     json.dumps({
-            #         'success': True,
-            #         'message': '订单创建成功',
-            #         'order_number': order['order_number'],
-            #         'order_id': order_id
-            #     }),
-            #     content_type='application/json',
-            #     status=200
-            # )
-
         except ValueError as ve:
             _logger.error(f"验证错误: {str(ve)}")
             # 打印异常信息 + 行号
@@ -200,7 +179,7 @@ class OrderController(http.Controller):
 
             # 查找或创建spu
             product_template = request.env['product.template'].sudo().search([
-                ('name', '=', item.get('name')),
+                ('name', '=', item.get('name')), # 这里需进一步优化
             ], limit=1)
 
             if not product_template:
@@ -274,7 +253,7 @@ class OrderController(http.Controller):
 
             if variant:
                 variant.write({'default_code': sku.get('product_sku')})
-                # 添加图片 ToDo
+                # 待补充sku图片 ToDo
                 return variant.id
             else:
                 _logger.error(f"变体未找到 模板ID: {product_template.id}, 属性值IDs: {attribute_value_ids}")
