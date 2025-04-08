@@ -28,9 +28,9 @@ class OrderController(http.Controller):
         response = {
             'success': False,
             'message': '',
-            'order_code': '',
-            'order_id': 0
         }
+
+        return response
 
         redis_host = config['redis_host']
         redis_port = config['redis_port']
