@@ -52,18 +52,17 @@ class OrderController(http.Controller):
             order = data.get('order')
 
             # 获取国家id
-            country_id = self._get_country_id(data)
+            country = self._get_country(data)
 
             # 获取区域id
-            state_id = self._get_state_id(data, country_id)
+            state = self._get_state(data, country.id)
 
             # 获取客户id
-            customer_id = self._get_customer_id(data, state_id, country_id)
+            customer = self._get_customer(data, state.id, country.id)
 
             # 获取货币id
-            currency_id = self._get_currency_id(data)
+            currency = self._get_currency(data)
 
-            # return order
             order_info = request.env['sale.order'].sudo().search([
                 ('origin', '=', order['order_number']),
             ], limit=1)
@@ -73,7 +72,7 @@ class OrderController(http.Controller):
                 order_id = order_info.id
             else:
                 # 新增
-                order_new_obj = self._create_order(data, customer_id, currency_id)
+                order_new_obj = self._create_order(data, customer.id, currency.id)
                 order_id = order_new_obj.id
                 if not order_id:
                     return {
@@ -83,9 +82,12 @@ class OrderController(http.Controller):
                 }
                 is_add = True
 
+            products_data = []
+
             # 处理订单详情
             for item in order['line_items']:
-                variant_id = self._create_product_attributes(item, redis_obj) # 创建商品属性并返回变体值
+                variant = self._create_product_attributes(item, redis_obj) # 创建商品属性并返回变体值
+                variant_id = variant.id
                 if variant_id:
                     # 计算折扣值 保留两位小数
                     # price = float(item['price'])  # 先转float
@@ -98,10 +100,26 @@ class OrderController(http.Controller):
                         'product_id': variant_id,
                         'product_uom_qty': item.get('qty_ordered'),
                         'price_unit': float(item['price']) - float(item['discount_amount']),
-                        'is_delivery': False,
-                        'currency_id': currency_id,
+                        'currency_id': currency.id,
+                        # 'is_delivery': False,
                         # 'discount': discount
                     })
+
+
+                    redis_key = config['odoo_product_id_hash_key']
+                    redis_field = item.get('default_code').lower()
+                    product_data = {
+                        'name': item.get('name', ''),
+                        'description': item['sku'].get('description', ''),
+                        'list_price': float(item.get('price', 0)),
+                        'type': 'consu',
+                        'product_id': redis_obj.hget(redis_key, redis_field),
+                        'default_code': item.get('default_code', ''),
+                        'currency_id': currency.id,
+                        'uom_id': variant.product_tmpl_id.uom_id.id,
+                        'categ_id': variant.product_tmpl_id.categ_id.id,
+                    }
+                    products_data.append(product_data)
 
             if is_add:
                 payment_info = order.get('payment')
@@ -114,7 +132,7 @@ class OrderController(http.Controller):
                 payment = request.env['account.payment'].sudo().create({
                     'payment_type': 'inbound',  # 收款为 inbound, 付款为 outbound
                     'partner_type': 'customer',  # 客户为 customer, 供应商为 supplier
-                    'partner_id': int(customer_id),
+                    'partner_id': int(customer.id),
                     'amount': float(order['grand_total']),
                     'payment_method_id': payment_method_id,
                     'journal_id': journal_id,  # 比如现金、银行账户的 journal
@@ -125,8 +143,11 @@ class OrderController(http.Controller):
             response.update({
                 'success': True,
                 'message': '订单创建成功',
-                'order_code': order['order_number'],
-                'order_id': order_id
+                'data': {
+                    'customer_data': customer.read()[0] if customer else {},
+                    'product_data': products_data,
+                    'order_data': order_info.read()[0] if order_info else {},
+                }
             })
 
         except ValueError as ve:
@@ -178,18 +199,6 @@ class OrderController(http.Controller):
 
         return True
 
-
-    def _create_product_record(self, item):
-        """
-        1.商品属性: product.attribute
-        2.属性值: product.attribute.value
-        3.商品模板(spu): product.template
-        4.商品模板允许的属性: product.template.attribute.line
-        5.商品模板允许的属性的值: product.template.attribute.value(根据笛卡尔积自动生成记录)
-        6.商品变体(sku): product.product(根据笛卡尔积自动生成记录)
-        """
-        pass
-
     def _create_product_attributes(self, item, redis_obj):
         """
         创建商品属性 并返回变体值
@@ -197,6 +206,8 @@ class OrderController(http.Controller):
         2.属性值: product.attribute.value
         3.商品模板(spu): product.template
         4.商品模板允许的属性: product.template.attribute.line
+        5.商品模板允许的属性的值: product.template.attribute.value(根据笛卡尔积自动生成记录)
+        6.商品变体(sku): product.product(根据笛卡尔积自动生成记录)
         """
         try:
             sku = item.get('sku', {})
@@ -204,7 +215,7 @@ class OrderController(http.Controller):
 
             # 查找或创建spu
             default_code = item.get('default_code').lower()
-            redis_key = 'odoo_product_template_id_map'
+            redis_key = config['odoo_product_id_hash_key']
             redis_field = f'{default_code}'
             product_template_id = redis_obj.hget(redis_key, redis_field)
             if not product_template_id:
@@ -299,7 +310,7 @@ class OrderController(http.Controller):
 
             variant.sudo().write(update_vals)
 
-            return variant.id
+            return variant
 
         except Exception as e:
             raise ValueError(f"Failed to create product attributes---: { str(e)}")
@@ -331,11 +342,13 @@ class OrderController(http.Controller):
             raise ValueError("Error downloading image2: %s", str(e))
 
     def _format_created_at(self, created_at):
+        """格式化日期"""
         parsed_date = datetime.datetime.strptime(created_at, '%Y-%m-%dT%H:%M:%S.%fZ')
         formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
         return formatted_date
 
     def _create_order(self, data, customer_id, currency_id):
+        """创建订单"""
         try:
             order = data.get('order')
 
@@ -397,14 +410,15 @@ class OrderController(http.Controller):
         return journal.id
 
 
-    def _get_currency_id(self, data):
+    def _get_currency(self, data):
+        """获取币种ID"""
         order = data.get('order')
         currency = request.env['res.currency'].sudo().search([('name', '=', order['currency'])], limit=1)
         if not currency:
             raise ValueError("Currency not found")
-        return currency.id
+        return currency
 
-    def _get_state_id(self, data, country_id):
+    def _get_state(self, data, country_id):
         """获取区域ID"""
         order = data.get('order')
         shipping_address = order.get('shipping_address')
@@ -415,17 +429,17 @@ class OrderController(http.Controller):
         ], limit=1)
         if not state:
             raise ValueError(f"State not found code={code} and country_id={country_id}")
-        return state.id
+        return state
 
-    def _get_country_id(self, data):
+    def _get_country(self, data):
         """获取国家ID"""
         order = data.get('order')
         country = request.env['res.country'].sudo().search([('code', '=', order['shipping_address']['country'])], limit=1)
         if not country:
             raise ValueError("Country not found")
-        return country.id
+        return country
 
-    def _get_customer_id(self, data, state_id, country_id):
+    def _get_customer(self, data, state_id, country_id):
         """获取客户ID"""
         order = data.get('order')
         customer = order.get('customer')
@@ -459,7 +473,7 @@ class OrderController(http.Controller):
             _logger.error("Failed to get_customer_id: %s", str(e))
             raise ValueError("Failed to get_customer_id: %s", str(e))
 
-        return customer_info.id
+        return customer_info
 
     def _validate_order_data(self, data):
         """验证订单数据"""
