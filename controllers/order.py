@@ -30,7 +30,7 @@ class OrderController(http.Controller):
             'message': '',
         }
 
-        return response
+        # return response
 
         redis_host = config['redis_host']
         redis_port = config['redis_port']
