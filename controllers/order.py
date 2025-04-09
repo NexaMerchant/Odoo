@@ -72,8 +72,8 @@ class OrderController(http.Controller):
                 order_id = order_info.id
             else:
                 # 新增
-                order_new_obj = self._create_order(data, customer.id, currency.id)
-                order_id = order_new_obj.id
+                order_info = self._create_order(data, customer.id, currency.id)
+                order_id = order_info.id
                 if not order_id:
                     return {
                     'success': False,
@@ -125,8 +125,12 @@ class OrderController(http.Controller):
                 payment_info = order.get('payment')
                 method_str = payment_info.get('method')
                 # return payment_info
-                invoice = order_new_obj._create_invoices()
-                invoice.action_post()
+                # try:
+                #     invoice = order_info._create_invoices()
+                #     invoice.action_post()
+                # except:
+                #     print('An exception occurred')
+                #     pass
                 journal_id = self._get_journal_id('bank')
                 payment_method_id = self._get_payment_method_id('inbound', method_str)
                 payment = request.env['account.payment'].sudo().create({
@@ -140,13 +144,26 @@ class OrderController(http.Controller):
                 payment.action_post()
 
             # 构建成功响应
+            customer_info = customer.read()[0] if customer and hasattr(customer, 'read') else {}
+            # return customer_info.keys()
+            if 'avatar_1920' in customer_info.keys():
+                del customer_info['avatar_1920']
+                del customer_info['avatar_1024']
+                del customer_info['avatar_512']
+                del customer_info['avatar_256']
+                del customer_info['avatar_128']
+
+            order_info = order_info.read()[0] if order_info and hasattr(order_info, 'read') else {}
+            if 'order_line_images' in order_info.keys():
+                del order_info['order_line_images']
+
             response.update({
                 'success': True,
                 'message': '订单创建成功',
                 'data': {
-                    'customer_data': customer.read()[0] if customer else {},
+                    'customer_data': customer_info,
                     'product_data': products_data,
-                    'order_data': order_info.read()[0] if order_info else {},
+                    'order_data': order_info,
                 }
             })
 
