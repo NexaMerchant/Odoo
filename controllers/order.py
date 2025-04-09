@@ -32,21 +32,11 @@ class OrderController(http.Controller):
             'message': '',
         }
 
-        # return response
-
         redis_host = config['redis_host']
         redis_port = config['redis_port']
         redis_db = config['redis_db']
         redis_password = config['redis_password']
         redis_obj = redis.Redis(host=redis_host, port=redis_port, db=redis_db, password=redis_password)
-
-        # url = "https://api.kundies.com/storage/tinymce/V1vvD0VT9GH6w4yZpRUYXzhH0Ej7S09dLbnFPSS5.webp"
-        # url = "https://api.kundies.com/storage/tinymce/B4LtGmh4CtLkYbNzgto3cJXW1pyPOKSv5uJ0nxgQ.jpg"
-        # image = self._get_product_img(48, url)
-        # return {
-        #     'success': False,
-        #     'message': image,
-        # }
 
         try:
             # 获取请求数据
@@ -114,7 +104,6 @@ class OrderController(http.Controller):
                         # 'is_delivery': False,
                         # 'discount': discount
                     })
-
 
                     redis_key = config['odoo_product_id_hash_key']
                     redis_field = item.get('default_code').lower()
@@ -564,63 +553,6 @@ class OrderController(http.Controller):
 
         if not isinstance(data.get('lines'), list) or len(data['lines']) == 0:
             raise ValueError("订单必须包含至少一个商品")
-
-
-    @http.route('/api/nexamerchant/order_bak', type='json', auth='public', methods=['POST'], csrf=True, cors='*')
-    def create_order_bak(self, **kwargs):
-        api_key = kwargs.get('api_key')
-
-        api_key = request.httprequest.headers.get('X-API-Key')
-        if not api_key:
-            raise AccessDenied("API key required")
-
-        # Use request.update_env to set the user
-        request.update_env(user=2)
-
-        # post data to create order like shopify admin api create order
-        # https://shopify.dev/docs/api/admin-rest/2025-01/resources/order#create-2025-01
-        # Get all the order data from the request
-        # Create the order in the database
-        # Return the order data in the response
-        try:
-            request_data = json.loads(request.httprequest.data)
-
-            order = request_data.get('order')
-
-            order_lines = order.get('order_lines')
-
-            # create customer in odoo
-            customer = order.get('customer')
-            # search customer by email
-            customer_id = request.env['res.partner'].sudo().search([('email', '=', customer.get('email'))])
-            if not customer_id:
-                try:
-                    # Create new customer if not found
-                    customerdata = {
-                        'name': customer.get('first_name') + ' ' + customer.get('last_name'),
-                        'email': customer.get('email')
-                    }
-                    customer_id = request.env['res.partner'].sudo().create(customerdata)
-                except AccessError:
-                    raise UserError('You do not have the necessary permissions to create a customer.')
-            else:
-                customer_id = customer_id[0]
-            print(customer_id)
-
-            print(request.env.user)
-
-
-
-
-            return {'order': order}
-        except UserError as e:
-            return {'error': str(e)}
-        except Exception as e:
-            return {'error': f'An unexpected error occurred: {str(e)}'}
-
-        return {'order': request_data}
-
-        pass
 
     @http.route('/api/nexamerchant/order/<int:order_id>', type='json', auth='public', methods=['PUT'], csrf=False)
     def update_order(self, order_id, **kwargs):
