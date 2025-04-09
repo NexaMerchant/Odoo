@@ -13,7 +13,7 @@ import requests
 import base64
 import redis
 from time import sleep
-from PIL import Image
+from PIL import Image, ImageFile
 from io import BytesIO
 
 _logger = logging.getLogger(__name__)
@@ -40,8 +40,8 @@ class OrderController(http.Controller):
         redis_password = config['redis_password']
         redis_obj = redis.Redis(host=redis_host, port=redis_port, db=redis_db, password=redis_password)
 
-        # url = "https://api.kundies.com/storage/tinymce/V1vvD0VT9GH6w4yZpRUYXzhH0Ej7S09dLbnFPSS5.webp"
-        url = "https://api.kundies.com/storage/tinymce/B4LtGmh4CtLkYbNzgto3cJXW1pyPOKSv5uJ0nxgQ.jpg"
+        url = "https://api.kundies.com/storage/tinymce/V1vvD0VT9GH6w4yZpRUYXzhH0Ej7S09dLbnFPSS5.webp"
+        # url = "https://api.kundies.com/storage/tinymce/B4LtGmh4CtLkYbNzgto3cJXW1pyPOKSv5uJ0nxgQ.jpg"
         image = self._get_product_img(48, url)
         return {
             'success': False,
@@ -345,70 +345,80 @@ class OrderController(http.Controller):
             raise ValueError(f"111 Failed to create product attributes---: { str(e)}. line_number: {line_number}")
 
     def _get_product_img(self, variant_id, image_src):
-        # 创建目录
+        """获取产品图片，支持缓存和重复利用
+        Args:
+            variant_id: 产品变体ID
+            image_src: 图片URL
+
+        Returns:
+            base64编码的图片数据
+        """
         os.makedirs('images', exist_ok=True)
-
         image_path = f'images/{variant_id}.jpg'
+        temp_path = f'images/{variant_id}.tmp'  # 临时文件路径
 
-        # 下载图片
-        if not os.path.exists(image_path):
+        # 1. 如果图片已存在且有效，直接返回
+        if os.path.exists(image_path):
             try:
-                headers = {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-                }
-                response = requests.get(image_src, stream=True, timeout=10, headers=headers)
-                response.raise_for_status()
-                # return response.status_code
+                # 验证现有图片是否有效
+                with Image.open(image_path) as img:
+                    img.verify()
 
-                # 使用BytesIO读取图片数据
-                img_data = BytesIO(response.content)
+                # 读取并返回base64编码
+                with open(image_path, 'rb') as f:
+                    return base64.b64encode(f.read()).decode('utf-8')
+            except Exception as e:
+                print(f"现有图片损坏，重新下载: {e}")
+                os.remove(image_path)  # 删除损坏文件
 
-                # 尝试打开图片并转换为RGB模式
-                try:
-                    img = Image.open(img_data)
-                    img.verify() # 验证图片完整性
-                    img = Image.open(img_data) # 重新打开已验证的图片
-                    # 转换为RGB模式（兼容JPG格式）
+        # 2. 下载并处理新图片
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0',
+                'Accept': 'image/webp,image/*,*/*;q=0.8'
+            }
+            response = requests.get(image_src, headers=headers, timeout=15)
+            response.raise_for_status()
+
+            # 计算文件哈希用于验证
+            # file_hash = hashlib.md5(response.content).hexdigest()
+            # print(f"下载完成，文件哈希: {file_hash}")
+
+            # 先保存到临时文件
+            with open(temp_path, 'wb') as f:
+                f.write(response.content)
+
+            # 验证并转换图片
+            try:
+                with Image.open(temp_path) as img:
+                    img.verify()
+                    img = Image.open(temp_path)
                     if img.mode != 'RGB':
                         img = img.convert('RGB')
+                    img.save(image_path, 'JPEG', quality=95, subsampling=0)
+            except Exception as img_error:
+                print(f"Pillow处理失败: {img_error}")
+                # if not shutil.which('dwebp'):
+                #     raise RuntimeError("dwebp工具未安装")
+                os.system(f'dwebp {temp_path} -o {image_path}')
 
-                    # 保存为JPG格式
-                    img.save(image_path, 'JPEG', quality=95)
+            # 最终验证
+            with Image.open(image_path) as img:
+                img.verify()
 
-                except Exception as img_error:
-                    # 如果Pillow无法处理，尝试使用系统工具转换
-                    print(f"Pillow处理失败，尝试其他方法: {img_error}")
-                    try:
-                        # 保存原始文件
-                        temp_webp = f'images/{variant_id}.webp'
-                        with open(temp_webp, 'wb') as f:
-                            f.write(response.content)
+            # 读取并返回base64
+            with open(image_path, 'rb') as f:
+                return base64.b64encode(f.read()).decode('utf-8')
 
-                        # 使用系统命令转换（需要安装dwebp）
-                        os.system(f'dwebp {temp_webp} -o {image_path}')
-                        os.remove(temp_webp)# 删除临时文件
-                        Image.open(image_path).verify()# 验证转换后的图片
-
-                    except Exception as conv_error:
-                        raise ValueError(f"图片转换失败: {str(conv_error)}")
-
-            except Exception as e:
-                print(f"Error downloading image: {e}")
-                raise ValueError(f"Error downloading image: {str(e)}")
-
-        # 读取并编码图片
-        try:
-            with open(image_path, 'rb') as file:
-                # 再次验证图片
-                try:
-                    Image.open(file).verify()
-                    file.seek(0)  # 重置文件指针
-                    return base64.b64encode(file.read()).decode('utf-8')
-                except Exception as verify_error:
-                    raise ValueError(f"Corrupted image file: {str(verify_error)}")
         except Exception as e:
-            print(f"Error reading image file: {e}")
-            raise ValueError(f"Error reading image file: {str(e)}")
+            # 清理可能损坏的文件
+            for path in [temp_path, image_path]:
+                if os.path.exists(path):
+                    os.remove(path)
+            raise ValueError(f"图片处理失败: {str(e)}")
+        finally:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
     def _format_created_at(self, created_at):
         """格式化日期"""
