@@ -40,13 +40,13 @@ class OrderController(http.Controller):
         redis_password = config['redis_password']
         redis_obj = redis.Redis(host=redis_host, port=redis_port, db=redis_db, password=redis_password)
 
-        url = "https://api.kundies.com/storage/tinymce/V1vvD0VT9GH6w4yZpRUYXzhH0Ej7S09dLbnFPSS5.webp"
+        # url = "https://api.kundies.com/storage/tinymce/V1vvD0VT9GH6w4yZpRUYXzhH0Ej7S09dLbnFPSS5.webp"
         # url = "https://api.kundies.com/storage/tinymce/B4LtGmh4CtLkYbNzgto3cJXW1pyPOKSv5uJ0nxgQ.jpg"
-        image = self._get_product_img(1004, url)
-        return {
-            'success': False,
-            'message': image,
-        }
+        # image = self._get_product_img(1004, url)
+        # return {
+        #     'success': False,
+        #     'message': image,
+        # }
 
         try:
             # 获取请求数据
