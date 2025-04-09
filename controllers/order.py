@@ -166,6 +166,7 @@ class OrderController(http.Controller):
             order_info = order_info.read()[0] if order_info and hasattr(order_info, 'read') else {}
             if 'order_line_images' in order_info.keys():
                 del order_info['order_line_images']
+                del order_info['product_image']
 
             response.update({
                 'success': True,
