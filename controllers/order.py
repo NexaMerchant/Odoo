@@ -13,8 +13,8 @@ import requests
 import base64
 import redis
 from time import sleep
-from PIL import Image, ImageFile
-from io import BytesIO
+from PIL import Image
+from decimal import Decimal, ROUND_HALF_UP
 
 _logger = logging.getLogger(__name__)
 
@@ -27,6 +27,13 @@ class OrderController(http.Controller):
         """
         创建订单接口
         """
+
+        # 鉴权
+        request_token = request.httprequest.headers.get('Authorization')
+        expected_token = request.env['ir.config_parameter'].sudo().get_param('nexa.api_token')
+        if not request_token or request_token != f'Bearer {expected_token}':
+            raise werkzeug.exceptions.Forbidden("Invalid or missing token.")
+
         response = {
             'success': False,
             'message': '',
@@ -89,23 +96,29 @@ class OrderController(http.Controller):
                 variant = self._create_product_attributes(item, redis_obj) # 创建商品属性并返回变体值
                 variant_id = variant.id
                 if variant_id:
-                    # 计算折扣值 保留两位小数
-                    # price = float(item['price'])  # 先转float
-                    # discount = round((float(item['discount_amount']) / price) * 100, 2)  # 计算百分比并保留2位小数
+                    # 计算折扣值 保留四位小数
+                    price_unit = Decimal(str(item['price']))
+                    qty = Decimal(str(item['qty_ordered']))
+                    discount_amount = Decimal(str(item['discount_amount']))
+                    if price_unit * qty != 0:
+                        discount_percent = (discount_amount / (price_unit * qty)) * Decimal('100')
+                        discount_percent = discount_percent.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
+                    else:
+                        discount_percent = Decimal('0.0')
+
                     request.env['sale.order.line'].sudo().search([
                         ('order_id', '=', order_id),
                         ('product_id', '=', variant_id)
                     ], limit=1) or request.env['sale.order.line'].sudo().create({
-                        'order_id': order_id,
-                        'product_id': variant_id,
-                        'product_uom_qty': item.get('qty_ordered'),
-                        'price_unit': float(item['price']) - float(item['discount_amount']),
-                        'currency_id': currency.id,
-                        # 'is_delivery': False,
-                        # 'discount': discount
-                    })
+                            'order_id': order_id,
+                            'product_id': variant_id,
+                            'product_uom_qty': qty,
+                            'price_unit': price_unit,
+                            'currency_id': currency.id,
+                            'discount': discount_percent
+                        })
 
-                    redis_key = config['odoo_product_id_hash_key']
+                    redis_key = config['odoo_product_id_hash_key'] + ':' + config['app_env']
                     redis_field = item.get('default_code').lower()
                     product_data = {
                         'name': item.get('name', ''),
@@ -155,7 +168,8 @@ class OrderController(http.Controller):
             order_info = order_info.read()[0] if order_info and hasattr(order_info, 'read') else {}
             if 'order_line_images' in order_info.keys():
                 del order_info['order_line_images']
-                del order_info['product_image']
+                if 'product_image' in order_info.keys():
+                    del order_info['product_image']
 
             response.update({
                 'success': True,
@@ -232,7 +246,7 @@ class OrderController(http.Controller):
 
             # 查找或创建spu
             default_code = item.get('default_code').lower()
-            redis_key = config['odoo_product_id_hash_key']
+            redis_key = config['odoo_product_id_hash_key'] + ':' + config['app_env']
             redis_field = f'{default_code}'
             product_template_id = redis_obj.hget(redis_key, redis_field)
             if not product_template_id:
@@ -433,9 +447,11 @@ class OrderController(http.Controller):
                 'currency_id'   : currency_id,
                 'amount_total'  : float(order['grand_total']),
                 'amount_tax'    : float(order['tax_amount']),
+                'warehouse_id'  : self._get_warehouse_id(order)
             }
             # return order_data
             order = request.env['sale.order'].sudo().create(order_data)
+            order.action_confirm()
         except Exception as e:
             _logger.error("Failed to _create_order: %s", str(e))
             raise ValueError("Failed to _create_order: %s", str(e))
@@ -543,6 +559,22 @@ class OrderController(http.Controller):
             raise ValueError("Failed to get_customer_id: %s", str(e))
 
         return customer_info
+
+    def _get_warehouse_id(self, order):
+        """
+        根据支付方式获取仓库 ID
+        """
+
+        payment_info = order.get('payment')
+        payment_method = payment_info.get('method')
+
+        # 动态设置仓库 ID
+        if payment_method in ['paypal_smart_button', 'airwallex']:
+            warehouse_id = request.env['stock.warehouse'].sudo().search([('name', '=', '上海')], limit=1).id
+        elif payment_method:
+            warehouse_id = request.env['stock.warehouse'].sudo().search([('name', '=', '深圳')], limit=1).id
+
+        return warehouse_id
 
     def _validate_order_data(self, data):
         """验证订单数据"""
