@@ -13,6 +13,8 @@ import requests
 import base64
 import redis
 from time import sleep
+from PIL import Image
+from io import BytesIO
 
 _logger = logging.getLogger(__name__)
 
@@ -37,6 +39,14 @@ class OrderController(http.Controller):
         redis_db = config['redis_db']
         redis_password = config['redis_password']
         redis_obj = redis.Redis(host=redis_host, port=redis_port, db=redis_db, password=redis_password)
+
+        # url = "https://api.kundies.com/storage/tinymce/V1vvD0VT9GH6w4yZpRUYXzhH0Ej7S09dLbnFPSS5.webp"
+        # # url = "https://api.kundies.com/storage/tinymce/B4LtGmh4CtLkYbNzgto3cJXW1pyPOKSv5uJ0nxgQ.jpg"
+        # image = self._get_product_img(1004, url)
+        # return {
+        #     'success': False,
+        #     'message': image,
+        # }
 
         try:
             # 获取请求数据
@@ -330,7 +340,9 @@ class OrderController(http.Controller):
             return variant
 
         except Exception as e:
-            raise ValueError(f"Failed to create product attributes---: { str(e)}")
+            _, _, tb = sys.exc_info()
+            line_number = tb.tb_lineno
+            raise ValueError(f"abc Failed to create product attributes---: { str(e)}. line_number: {line_number}")
 
     def _get_product_img(self, variant_id, image_src):
         # 创建目录
@@ -341,22 +353,62 @@ class OrderController(http.Controller):
         # 下载图片
         if not os.path.exists(image_path):
             try:
-                image = requests.get(image_src)
-                image.raise_for_status()
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                }
+                response = requests.get(image_src, stream=True, timeout=10, headers=headers)
+                response.raise_for_status()
+                # return response.status_code
 
-                with open(image_path, 'wb') as file:
-                    file.write(image.content)
+                # 使用BytesIO读取图片数据
+                img_data = BytesIO(response.content)
+
+                # 尝试打开图片并转换为RGB模式
+                try:
+                    img = Image.open(img_data)
+                    img.verify() # 验证图片完整性
+                    img = Image.open(img_data) # 重新打开已验证的图片
+                    # 转换为RGB模式（兼容JPG格式）
+                    if img.mode != 'RGB':
+                        img = img.convert('RGB')
+
+                    # 保存为JPG格式
+                    img.save(image_path, 'JPEG', quality=95)
+
+                except Exception as img_error:
+                    # 如果Pillow无法处理，尝试使用系统工具转换
+                    print(f"Pillow处理失败，尝试其他方法: {img_error}")
+                    try:
+                        # 保存原始文件
+                        temp_webp = f'images/{variant_id}.webp'
+                        with open(temp_webp, 'wb') as f:
+                            f.write(response.content)
+
+                        # 使用系统命令转换（需要安装dwebp）
+                        os.system(f'dwebp {temp_webp} -o {image_path}')
+                        os.remove(temp_webp)# 删除临时文件
+                        Image.open(image_path).verify()# 验证转换后的图片
+
+                    except Exception as conv_error:
+                        raise ValueError(f"图片转换失败: {str(conv_error)}")
+
             except Exception as e:
                 print(f"Error downloading image: {e}")
-                raise ValueError("Error downloading image1: %s", str(e))
+                raise ValueError(f"Error downloading image: {str(e)}")
 
-        # 保存到本地
+        # 读取并编码图片
         try:
             with open(image_path, 'rb') as file:
-                return base64.b64encode(file.read()).decode('utf-8')
+                # 再次验证图片
+                try:
+                    Image.open(file).verify()
+                    file.seek(0)  # 重置文件指针
+                    return base64.b64encode(file.read()).decode('utf-8')
+                except Exception as verify_error:
+                    raise ValueError(f"Corrupted image file: {str(verify_error)}")
         except Exception as e:
             print(f"Error reading image file: {e}")
-            raise ValueError("Error downloading image2: %s", str(e))
+            raise ValueError(f"Error reading image file: {str(e)}")
 
     def _format_created_at(self, created_at):
         """格式化日期"""
