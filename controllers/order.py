@@ -342,7 +342,7 @@ class OrderController(http.Controller):
         except Exception as e:
             _, _, tb = sys.exc_info()
             line_number = tb.tb_lineno
-            raise ValueError(f"abc Failed to create product attributes---: { str(e)}. line_number: {line_number}")
+            raise ValueError(f"111 Failed to create product attributes---: { str(e)}. line_number: {line_number}")
 
     def _get_product_img(self, variant_id, image_src):
         # 创建目录
