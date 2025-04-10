@@ -28,6 +28,12 @@ class OrderController(http.Controller):
         创建订单接口
         """
 
+        # return {
+        #     'success': False,
+        #     'message': 'No data provided',
+        #     'status': 400
+        # }
+
         # 鉴权
         request_token = request.httprequest.headers.get('Authorization')
         expected_token = request.env['ir.config_parameter'].sudo().get_param('nexa.api_token')
@@ -38,6 +44,8 @@ class OrderController(http.Controller):
             'success': False,
             'message': '',
         }
+
+        # return response
 
         redis_host = config['redis_host']
         redis_port = config['redis_port']
@@ -96,16 +104,39 @@ class OrderController(http.Controller):
                 variant = self._create_product_attributes(item, redis_obj) # 创建商品属性并返回变体值
                 variant_id = variant.id
                 if variant_id:
-                    # 计算折扣值 保留四位小数
+
                     price_unit = Decimal(str(item['price']))
                     qty = Decimal(str(item['qty_ordered']))
                     discount_amount = Decimal(str(item['discount_amount']))
+
+                    # 计算折扣值 保留四位小数
                     if price_unit * qty != 0:
+                        # 单价 =（总价 - 总折扣） / 数量
                         discount_percent = (discount_amount / (price_unit * qty)) * Decimal('100')
                         discount_percent = discount_percent.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
                     else:
                         discount_percent = Decimal('0.0')
 
+
+                    # 计算实际单价 保留四位小数
+                    # if qty != 0:
+                    #     # 单价 =（总价 - 总折扣） / 数量
+                    #     actual_price_unit = (price_unit * qty - discount_amount) / qty
+                    #     # 关键点：使用 quantize 保留4位小数，并指定四舍五入模式
+                    #     actual_price_unit = actual_price_unit.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
+                    # else:
+                    #     actual_price_unit = Decimal('0.0000')
+
+                    # return {
+                    #     'order_id': order_id,
+                    #     'product_id': variant_id,
+                    #     'product_uom_qty': qty,
+                    #     'price_unit': actual_price_unit,
+                    #     'currency_id': currency.id,
+                    #     # 'discount': discount_percent
+                    # }
+
+                    # 创建订单详情
                     request.env['sale.order.line'].sudo().search([
                         ('order_id', '=', order_id),
                         ('product_id', '=', variant_id)
@@ -317,7 +348,15 @@ class OrderController(http.Controller):
             domain = [('product_tmpl_id', '=', product_template_id)]
             if attribute_value_ids:
                 domain.append(('product_template_attribute_value_ids.product_attribute_value_id', 'in', attribute_value_ids))
-            variant = request.env['product.product'].sudo().search(domain, limit=1)
+            variants = request.env['product.product'].sudo().search(domain)
+            # 找出属性值完全匹配的变体
+            for var in variants:
+                var_value_ids = set(var.product_template_attribute_value_ids.mapped('product_attribute_value_id.id'))
+                if set(attribute_value_ids) == var_value_ids:
+                    variant = var
+                    break
+            else:
+                variant = None
 
             if not variant:
                 product_template._create_variant_ids()
