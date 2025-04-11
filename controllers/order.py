@@ -175,7 +175,7 @@ class OrderController(http.Controller):
                 #     print('An exception occurred')
                 #     pass
                 journal_id = self._get_journal_id('bank')
-                payment_method_id = self._get_payment_method_id('inbound', method_str)
+                payment_method_id = self._get_payment_method_id(method_str)
                 payment = request.env['account.payment'].sudo().create({
                     'payment_type': 'inbound',  # 收款为 inbound, 付款为 outbound
                     'partner_type': 'customer',  # 客户为 customer, 供应商为 supplier
@@ -486,9 +486,9 @@ class OrderController(http.Controller):
                 'currency_id'   : currency_id,
                 'amount_total'  : float(order['grand_total']),
                 'amount_tax'    : float(order['tax_amount']),
-                'warehouse_id'  : self._get_warehouse_id(order)
+                'warehouse_id'  : self._get_warehouse_id(order),
+                'name'          : order['name'],
             }
-            # return order_data
             order = request.env['sale.order'].sudo().create(order_data)
             order.action_confirm()
         except Exception as e:
@@ -499,22 +499,23 @@ class OrderController(http.Controller):
 
         return order
 
-    def _get_payment_method_id(self, payment_type='inbound', payment_name='paypal_smart_button'):
+    def _get_payment_method_id(self, payment_name):
         """
         获取付款方式的ID，根据支付名称映射匹配 account.payment.method
         """
         payment_mapping = {
             'paypal_smart_button': 'paypal',
-            'airwallex': 'paypal'
+            'airwallex': 'airwallex',
+            'codpayment': 'cod',
         }
-        name = payment_mapping.get(payment_name)
+        code = payment_mapping.get(payment_name)
         payment_method = request.env['account.payment.method'].sudo().search([
-            ('name', 'ilike', name),
-            ('payment_type', '=', payment_type)
+            ('code', '=', code),
+            ('payment_type', '=', 'inbound')
         ], limit=1)
 
         if not payment_method:
-            raise ValueError(f"[PaymentMethod] Not found: {name} ({payment_type})")
+            raise ValueError(f"[PaymentMethod] Not found: code:{code} payment_name:{payment_name} ")
 
         return payment_method.id
 
