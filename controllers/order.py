@@ -488,6 +488,7 @@ class OrderController(http.Controller):
                 'amount_tax'    : float(order['tax_amount']),
                 'warehouse_id'  : self._get_warehouse_id(order),
                 'name'          : order['name'],
+                'website_id'    : self._get_website_id(order['website_name']),
             }
             order = request.env['sale.order'].sudo().create(order_data)
             order.action_confirm()
@@ -533,6 +534,16 @@ class OrderController(http.Controller):
             raise ValueError(f"[Journal] Not found: ({type})")
 
         return journal.id
+
+    def _get_website_id(self, website_name):
+        web_site = request.env['website'].sudo().search([
+            ('name', '=', website_name),
+        ], limit=1)
+
+        if not web_site:
+            raise ValueError(f"[WebSite] Not found: ({website_name})")
+
+        return web_site.id
 
 
     def _get_currency(self, data):
