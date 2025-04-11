@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Odoo 字段值获取工具
-用法：./get_field_value.py -m sale.order -i 1 -f order_line_images
+用法1：./get_field_value.py -m sale.order -i 1 -f order_line_images
+用法2：./get_field_value.py -m sale.order -i 1
 """
 import argparse
 import logging
@@ -16,7 +17,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description='获取 Odoo 模型字段值')
     parser.add_argument('-m', '--model', required=True, help='模型名称（如 sale.order）')
     parser.add_argument('-i', '--id', type=int, required=True, help='记录ID')
-    parser.add_argument('-f', '--field', required=True, help='字段名称')
+    # parser.add_argument('-f', '--field', required=True, help='字段名称')
     parser.add_argument('-c', '--config', default='odoo.conf', help='Odoo 配置文件路径')
     return parser.parse_args()
 
