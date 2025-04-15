@@ -93,7 +93,6 @@ class OrderController(http.Controller):
                     is_add = True
                 except Exception as e:
                     # print('An exception occurred')
-                    # except Exception as e:
                     #     _logger.error("Failed to _create_order: %s", str(e))
                     #     raise ValueError("Failed to _create_order: %s", str(e))
                     return {
@@ -192,20 +191,32 @@ class OrderController(http.Controller):
                 payment.action_post()
 
             # 构建成功响应
-            customer_info = customer.read()[0] if customer and hasattr(customer, 'read') else {}
-            # return customer_info.keys()
-            if 'avatar_1920' in customer_info.keys():
-                del customer_info['avatar_1920']
-                del customer_info['avatar_1024']
-                del customer_info['avatar_512']
-                del customer_info['avatar_256']
-                del customer_info['avatar_128']
+            try:
+                customer_info = customer.read()[0] if customer and hasattr(customer, 'read') else {}
+                # return customer_info.keys()
+                if 'avatar_1920' in customer_info.keys():
+                    del customer_info['avatar_1920']
+                    del customer_info['avatar_1024']
+                    del customer_info['avatar_512']
+                    del customer_info['avatar_256']
+                    del customer_info['avatar_128']
 
-            order_info = order_info.read()[0] if order_info and hasattr(order_info, 'read') else {}
-            if 'order_line_images' in order_info.keys():
-                del order_info['order_line_images']
-                if 'product_image' in order_info.keys():
-                    del order_info['product_image']
+                order_info = order_info.read()[0] if order_info and hasattr(order_info, 'read') else {}
+                if 'order_line_images' in order_info.keys():
+                    del order_info['order_line_images']
+                    if 'product_image' in order_info.keys():
+                        del order_info['product_image']
+            except Exception as e:
+                print('An exception occurred')
+                return {
+                    'success': True,
+                    'message': '订单创建成功 but' + str(e),
+                    'data': {
+                        'customer_data': {},
+                        'product_data': product_data,
+                        'order_data': {},
+                    }
+                }
 
             response.update({
                 'success': True,
@@ -564,10 +575,18 @@ class OrderController(http.Controller):
         order = data.get('order')
         shipping_address = order.get('shipping_address')
         code = shipping_address.get('province')
-        state = request.env['res.country.state'].sudo().search([
-            ('code', '=', code),
-            ('country_id', '=', country_id)
-        ], limit=1)
+        search_where = []
+        if code:
+            search_where.append(('code', '=', code))
+        if country_id:
+            search_where.append(('country_id', '=', country_id))
+
+        state = request.env['res.country.state'].sudo().search(search_where, limit=1)
+        # state = request.env['res.country.state'].sudo().search([
+        #     ('code', '=', code),
+        #     ('country_id', '=', country_id)
+        # ], limit=1)
+
         if not state:
             raise ValueError(f"State not found code={code} and country_id={country_id}")
         return state
