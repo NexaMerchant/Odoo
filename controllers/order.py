@@ -85,7 +85,7 @@ class OrderController(http.Controller):
                 }
 
             # 获取客户id
-            customer = self._get_customer(data, state.id, country.id)
+            customer = self._get_or_create_customer(data, state.id, country.id)
 
             # 获取货币id
             currency = self._get_currency(data)
@@ -204,10 +204,7 @@ class OrderController(http.Controller):
 
             # 构建成功响应
             try:
-                customer_fields = request.env['res.partner'].fields_get().keys()
-                customer_info = customer.read(list(customer_fields))[0]
-                # customer_info = customer.read()[0] if customer and hasattr(customer, 'read') else {}
-                # return customer_info.keys()
+                customer_info = self.safe_read(customer)
                 if 'avatar_1920' in customer_info.keys():
                     del customer_info['avatar_1920']
                     del customer_info['avatar_1024']
@@ -267,6 +264,36 @@ class OrderController(http.Controller):
             response['message'] = f"订单创建失败2: {str(e)} line:{str(line_number)}"
 
         return response
+
+    def safe_read(self, record, exclude_fields=None):
+        """
+        安全读取一个记录的字段，自动排除某些可能导致错误的字段。
+        :param record: Odoo 记录对象（如 res.partner 的一条记录）
+        :param exclude_fields: 要排除的字段列表（如 ['display_name']）
+        :return: dict 格式的字段数据
+        """
+        if not record:
+            return {}
+
+        exclude_fields = set(exclude_fields or [])
+
+        # 获取模型字段列表（不包含要排除的字段）
+        all_fields = set(record._fields.keys())
+        safe_fields = list(all_fields - exclude_fields)
+
+        try:
+            result = record.read(safe_fields)
+            return result[0] if result else {}
+        except Exception as e:
+            _logger.warning(f"safe_read failed for {record._name}({record.id}): {e}")
+            try:
+                fallback_fields = ['id', 'name', 'email', 'phone', 'mobile', 'street', 'street2', 'zip', 'city', 'state_id', 'country_id', 'vat', 'function', 'title', 'company_id', 'category_id', 'user_id', 'team_id', 'lang', 'tz', 'active', 'company_type', 'is_company', 'color', 'partner_share', 'commercial_partner_id', 'type', 'signup_token', 'signup_type', 'signup_expiration', 'signup_url', 'partner_gid']
+                result = record.read(fallback_fields)
+                return result[0] if result else {}
+            except Exception as inner_e:
+                _logger.error(f"safe_read fallback also failed: {inner_e}")
+                return {}
+
 
     def _add_shipping_cost(self, order_id, price_unit):
         """
@@ -617,41 +644,61 @@ class OrderController(http.Controller):
             raise ValueError("Country not found")
         return country
 
-    def _get_customer(self, data, state_id, country_id):
-        """获取客户ID"""
+    def _get_or_create_customer(self, data, state_id, country_id):
+        """
+        根据传入的数据创建或获取客户记录，支持多地址逻辑。
+        :param data: dict，包含 'name', 'email' 等基本信息
+        :param state_id: int，省份ID
+        :param country_id: int，国家ID
+        :return: res.partner 对象
+        """
+
         order = data.get('order')
         customer = order.get('customer')
-        try:
-            customer_info = request.env['res.partner'].sudo().search([('email', '=', customer.get('email'))], limit=1)
-            if not customer_info:
-                customer_data = {
-                    'name'        : order['shipping_address']['first_name'] + ' ' + order['shipping_address']['last_name'],
-                    'email'       : customer['email'],
-                    'phone'       : order['shipping_address']['phone'],
-                    'street'      : order['shipping_address']['address1'],
-                    'city'        : order['shipping_address']['city'],
-                    'zip'         : order['shipping_address']['zip'],
-                    'country_code': order['shipping_address']['country'],
-                    'state_id'    : state_id,
-                    'country_id'  : country_id,
-                    'website_id'  : config['usa_website_id'],
-                    # 'lang'        : config['usa_lang'],
-                    # 'category_id' : [8],
-                    'type'        : 'delivery',
-                }
+        customer_data = {
+            'name'        : order['shipping_address']['first_name'] + ' ' + order['shipping_address']['last_name'],
+            'email'       : customer['email'],
+            'phone'       : order['shipping_address']['phone'],
+            'street'      : order['shipping_address']['address1'],
+            'city'        : order['shipping_address']['city'],
+            'zip'         : order['shipping_address']['zip'],
+            'country_code': order['shipping_address']['country'],
+            'state_id'    : state_id,
+            'country_id'  : country_id,
+            'website_id'  : config['usa_website_id'],
+            'type'        : 'delivery',
+        }
 
-                # return customer_data
+        Partner = request.env['res.partner'].sudo()
 
-                customer_info = request.env['res.partner'].sudo().create(customer_data)
+        # 查找是否有同名同邮箱的主联系人
+        existing_partner = Partner.search([
+            ('email', '=', customer['email']),
+            ('parent_id', '=', False)
+        ], limit=1)
 
-            if not customer_info:
-                raise ValueError("客户不存在")
+        # 如果不存在，创建主客户
+        if not existing_partner:
+            customer = Partner.create(customer_data)
+            return customer
 
-        except Exception as e:
-            _logger.error("Failed to get_customer_id: %s", str(e))
-            raise ValueError("Failed to get_customer_id: %s", str(e))
+        # 检查是否已存在相同地区的记录（包括主记录或子地址）
+        existing_same_area = Partner.search([
+            ('parent_id', 'in', [existing_partner.id, False]),
+            ('email', '=', customer['email']),
+            ('state_id', '=', state_id),
+            ('country_id', '=', country_id)
+        ], limit=1)
 
-        return customer_info
+        if existing_same_area:
+            return existing_same_area
+
+        # 创建新的子联系人（收货地址）
+        customer_data.update({
+            'parent_id': existing_partner.id,
+        })
+        new_address = Partner.create(customer_data)
+        return new_address
 
     def _get_warehouse_id(self, order):
         """
