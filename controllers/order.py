@@ -76,16 +76,10 @@ class OrderController(http.Controller):
                 }
 
             # 获取区域id
-            state = self._get_state(data, country.id)
-            if not state or not state.id:
-                return {
-                    'success': False,
-                    'message': '区域信息获取失败' + json.dumps(order['shipping_address']),
-                    'status': 401
-                }
+            state_id = self._get_state(data, country.id)
 
             # 获取客户id
-            customer = self._get_or_create_customer(data, state.id, country.id)
+            customer = self._get_or_create_customer(data, state_id, country.id)
 
             # 获取货币id
             currency = self._get_currency(data)
@@ -623,6 +617,9 @@ class OrderController(http.Controller):
         search_where = []
         if code:
             search_where.append(('code', '=', code))
+        else:
+            return False
+
         if country_id:
             search_where.append(('country_id', '=', country_id))
 
@@ -634,7 +631,7 @@ class OrderController(http.Controller):
 
         if not state:
             raise ValueError(f"State not found code={code} and country_id={country_id}")
-        return state
+        return state.id
 
     def _get_country(self, data):
         """获取国家ID"""
