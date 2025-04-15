@@ -68,9 +68,21 @@ class OrderController(http.Controller):
 
             # 获取国家id
             country = self._get_country(data)
+            if not country or not country.id:
+                return {
+                    'success': False,
+                    'message': '国家信息获取失败' + json.dumps(order['shipping_address']),
+                    'status': 401
+                }
 
             # 获取区域id
             state = self._get_state(data, country.id)
+            if not state or not state.id:
+                return {
+                    'success': False,
+                    'message': '区域信息获取失败' + json.dumps(order['shipping_address']),
+                    'status': 401
+                }
 
             # 获取客户id
             customer = self._get_customer(data, state.id, country.id)
@@ -97,7 +109,7 @@ class OrderController(http.Controller):
                     #     raise ValueError("Failed to _create_order: %s", str(e))
                     return {
                         'success': False,
-                        'message': '订单创建失败:' + str(e),
+                        'message': '订单创建失败3:' + str(e),
                         'status': 401
                     }
 
@@ -192,7 +204,9 @@ class OrderController(http.Controller):
 
             # 构建成功响应
             try:
-                customer_info = customer.read()[0] if customer and hasattr(customer, 'read') else {}
+                customer_fields = request.env['res.partner'].fields_get().keys()
+                customer_info = customer.read(list(customer_fields))[0]
+                # customer_info = customer.read()[0] if customer and hasattr(customer, 'read') else {}
                 # return customer_info.keys()
                 if 'avatar_1920' in customer_info.keys():
                     del customer_info['avatar_1920']
@@ -201,16 +215,20 @@ class OrderController(http.Controller):
                     del customer_info['avatar_256']
                     del customer_info['avatar_128']
 
-                order_info = order_info.read()[0] if order_info and hasattr(order_info, 'read') else {}
+                order_fields = request.env['sale.order'].fields_get().keys()
+                order_info = order_info.read(list(order_fields))[0]
+                # order_info = order_info.read()[0] if order_info and hasattr(order_info, 'read') else {}
                 if 'order_line_images' in order_info.keys():
                     del order_info['order_line_images']
                     if 'product_image' in order_info.keys():
                         del order_info['product_image']
             except Exception as e:
                 print('An exception occurred')
+                _, _, tb = sys.exc_info()
+                line_number = tb.tb_lineno
                 return {
                     'success': True,
-                    'message': '订单创建成功 but' + str(e),
+                    'message': '订单创建成功 but' + str(e) + '.line_number:' + str(line_number),
                     'data': {
                         'customer_data': {},
                         'product_data': product_data,
@@ -239,14 +257,14 @@ class OrderController(http.Controller):
 
         except Exception as e:
 
-            _logger.exception(f"订单创建失败: {str(e)}")
+            _logger.exception(f"订单创建失败1: {str(e)}")
 
             # 打印异常信息 + 行号
             traceback.print_exc()  # 打印完整堆栈（包括行号）
             # 或者只获取当前异常的行号
             _, _, tb = sys.exc_info()
             line_number = tb.tb_lineno
-            response['message'] = f"订单创建失败: {str(e)} line:{str(line_number)}"
+            response['message'] = f"订单创建失败2: {str(e)} line:{str(line_number)}"
 
         return response
 
