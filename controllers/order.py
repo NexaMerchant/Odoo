@@ -87,15 +87,20 @@ class OrderController(http.Controller):
                 order_id = order_info.id
             else:
                 # 新增
-                order_info = self._create_order(data, customer.id, currency.id)
-                order_id = order_info.id
-                if not order_id:
+                try:
+                    order_info = self._create_order(data, customer.id, currency.id)
+                    order_id = order_info.id
+                    is_add = True
+                except Exception as e:
+                    # print('An exception occurred')
+                    # except Exception as e:
+                    #     _logger.error("Failed to _create_order: %s", str(e))
+                    #     raise ValueError("Failed to _create_order: %s", str(e))
                     return {
-                    'success': False,
-                    'message': '订单创建失败',
-                    'status': 401
-                }
-                is_add = True
+                        'success': False,
+                        'message': '订单创建失败:' + str(e),
+                        'status': 401
+                    }
 
             products_data = []
 
@@ -471,34 +476,34 @@ class OrderController(http.Controller):
 
     def _create_order(self, data, customer_id, currency_id):
         """创建订单"""
-        try:
-            order = data.get('order')
+        # try:
+        order = data.get('order')
 
-            formatted_date = self._format_created_at(order['created_at'])
+        formatted_date = self._format_created_at(order['created_at'])
 
-            order_data = {
-                'partner_id'    : int(customer_id),
-                'origin'        : order['order_number'],
-                'date_order'    : formatted_date,
-                'state'         : 'sale',
-                'create_date'   : formatted_date,
-                'invoice_status': 'to invoice',
-                'currency_id'   : currency_id,
-                'amount_total'  : float(order['grand_total']),
-                'amount_tax'    : float(order['tax_amount']),
-                'warehouse_id'  : self._get_warehouse_id(order),
-                'name'          : order['name'],
-                'website_id'    : self._get_website_id(order['website_name']),
-            }
-            order = request.env['sale.order'].sudo().create(order_data)
-            order.action_confirm()
-        except Exception as e:
-            _logger.error("Failed to _create_order: %s", str(e))
-            raise ValueError("Failed to _create_order: %s", str(e))
+        order_data = {
+            'partner_id'    : int(customer_id),
+            'origin'        : order['order_number'],
+            'date_order'    : formatted_date,
+            'state'         : 'sale',
+            'create_date'   : formatted_date,
+            'invoice_status': 'to invoice',
+            'currency_id'   : currency_id,
+            'amount_total'  : float(order['grand_total']),
+            'amount_tax'    : float(order['tax_amount']),
+            'warehouse_id'  : self._get_warehouse_id(order),
+            'name'          : order['name'],
+            'website_id'    : self._get_website_id(order['website_name']),
+        }
+        new_order = request.env['sale.order'].sudo().create(order_data)
+        new_order.action_confirm()
+        # except Exception as e:
+        #     _logger.error("Failed to _create_order: %s", str(e))
+        #     raise ValueError("Failed to _create_order: %s", str(e))
 
         # print(order_data)
 
-        return order
+        return new_order
 
     def _get_payment_method_id(self, payment_name):
         """
