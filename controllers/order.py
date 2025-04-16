@@ -303,7 +303,7 @@ class OrderController(http.Controller):
         return True
 
     def _get_spu_map_redis_key(self, website_name):
-        return f'{config['odoo_product_id_hash_key']}:{config['app_env']}'
+        # return f'{config['odoo_product_id_hash_key']}:{config['app_env']}'
         return f'{config['odoo_product_id_hash_key']}:{config['app_env']}:{website_name}'
 
     def _create_product_attributes(self, item, redis_obj, redis_key):
