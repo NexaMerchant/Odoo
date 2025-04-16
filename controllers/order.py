@@ -626,10 +626,11 @@ class OrderController(http.Controller):
             search_where.append(('country_id', '=', country_id))
 
         state = request.env['res.country.state'].sudo().search(search_where, limit=1)
-        # state = request.env['res.country.state'].sudo().search([
-        #     ('code', '=', code),
-        #     ('country_id', '=', country_id)
-        # ], limit=1)
+        if not state:
+            state = request.env['res.country.state'].sudo().search([
+                ('name', '=', shipping_address.get('state_name')),
+                ('country_id', '=', country_id)
+            ], limit=1)
 
         if not state:
             raise ValueError(f"State not found code={code} and country_id={country_id}")
