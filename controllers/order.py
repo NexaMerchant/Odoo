@@ -76,7 +76,7 @@ class OrderController(http.Controller):
             customer = self._get_or_create_customer(data, state_id, country.id)
 
             # 获取货币id
-            currency = self._get_currency(data)
+            pricelist_id, currency_id = self._get_currency(data)
 
             order_info = request.env['sale.order'].sudo().search([
                 ('origin', '=', order['name']),
@@ -94,7 +94,7 @@ class OrderController(http.Controller):
             else:
                 # 新增
                 try:
-                    order_info = self._create_order(data, customer.id, currency.id)
+                    order_info = self._create_order(data, customer.id, pricelist_id, currency_id)
                     if order_info:
                         order_id = order_info.id
                         is_add = True
@@ -513,7 +513,7 @@ class OrderController(http.Controller):
         formatted_date = parsed_date.strftime('%Y-%m-%d %H:%M:%S')
         return formatted_date
 
-    def _create_order(self, data, customer_id, currency_id):
+    def _create_order(self, data, customer_id, pricelist_id, currency_id):
         """创建订单"""
         try:
             order = data.get('order')
@@ -527,6 +527,7 @@ class OrderController(http.Controller):
                 'state'         : 'sale',
                 'create_date'   : formatted_date,
                 'invoice_status': 'to invoice',
+                'pricelist_id'  : pricelist_id,
                 'currency_id'   : currency_id,
                 'amount_total'  : float(order['grand_total']),
                 'amount_tax'    : float(order['tax_amount']),
@@ -591,10 +592,24 @@ class OrderController(http.Controller):
     def _get_currency(self, data):
         """获取币种ID"""
         order = data.get('order')
+
+        currency_str = order['currency']
+
         currency = request.env['res.currency'].sudo().search([('name', '=', order['currency'])], limit=1)
         if not currency:
+            raise ValueError(f"找不到 currency = {currency_str} 的货币符号，请先创建")
+
+        pricelist = request.env['product.pricelist'].sudo().search([
+            ('currency_id', '=', currency.id)
+        ], limit=1)
+        if not pricelist:
+            raise ValueError(f"找不到 currency = {currency_str} 的价格表，请先创建")
+
+
+        if not currency:
             raise ValueError("Currency not found")
-        return currency
+
+        return pricelist.id, currency.id
 
     def _get_state(self, data, country_id):
         """获取区域ID"""
