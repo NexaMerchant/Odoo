@@ -28,12 +28,6 @@ class OrderController(http.Controller):
         创建订单接口
         """
 
-        # return {
-        #     'success': False,
-        #     'message': 'No data provided',
-        #     'status': 400
-        # }
-
         # 鉴权
         request_token = request.httprequest.headers.get('Authorization')
         expected_token = request.env['ir.config_parameter'].sudo().get_param('nexa.api_token')
@@ -90,17 +84,27 @@ class OrderController(http.Controller):
 
             is_add = False
             if order_info:
+                if order_info.state != 'sale':
+                    return {
+                        'success': False,
+                        'message': '订单已存在，状态:' + order_info.state,
+                        'status': 401
+                    }
                 order_id = order_info.id
             else:
                 # 新增
                 try:
                     order_info = self._create_order(data, customer.id, currency.id)
-                    order_id = order_info.id
-                    is_add = True
+                    if order_info:
+                        order_id = order_info.id
+                        is_add = True
+                    else:
+                        return {
+                            'success': False,
+                            'message': '订单创建失败001',
+                            'status': 401
+                        }
                 except Exception as e:
-                    # print('An exception occurred')
-                    #     _logger.error("Failed to _create_order: %s", str(e))
-                    #     raise ValueError("Failed to _create_order: %s", str(e))
                     return {
                         'success': False,
                         'message': '订单创建失败3:' + str(e),
@@ -109,9 +113,12 @@ class OrderController(http.Controller):
 
             products_data = []
 
+            website_name = order['website_name']
+            redis_key = self._get_spu_map_redis_key(website_name)
+
             # 处理订单详情
             for item in order['line_items']:
-                variant = self._create_product_attributes(item, redis_obj) # 创建商品属性并返回变体值
+                variant = self._create_product_attributes(item, redis_obj, redis_key) # 创建商品属性并返回变体值
                 variant_id = variant.id
                 if variant_id:
 
@@ -121,30 +128,10 @@ class OrderController(http.Controller):
 
                     # 计算折扣值 保留四位小数
                     if price_unit * qty != 0:
-                        # 单价 =（总价 - 总折扣） / 数量
                         discount_percent = (discount_amount / (price_unit * qty)) * Decimal('100')
                         discount_percent = discount_percent.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
                     else:
                         discount_percent = Decimal('0.0')
-
-
-                    # 计算实际单价 保留四位小数
-                    # if qty != 0:
-                    #     # 单价 =（总价 - 总折扣） / 数量
-                    #     actual_price_unit = (price_unit * qty - discount_amount) / qty
-                    #     # 关键点：使用 quantize 保留4位小数，并指定四舍五入模式
-                    #     actual_price_unit = actual_price_unit.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
-                    # else:
-                    #     actual_price_unit = Decimal('0.0000')
-
-                    # return {
-                    #     'order_id': order_id,
-                    #     'product_id': variant_id,
-                    #     'product_uom_qty': qty,
-                    #     'price_unit': actual_price_unit,
-                    #     'currency_id': currency.id,
-                    #     # 'discount': discount_percent
-                    # }
 
                     # 创建订单详情
                     request.env['sale.order.line'].sudo().search([
@@ -159,7 +146,6 @@ class OrderController(http.Controller):
                             'discount': discount_percent
                         })
 
-                    redis_key = config['odoo_product_id_hash_key'] + ':' + config['app_env']
                     redis_field = item.get('default_code').lower()
                     product_data = {
                         'name': item.get('name', ''),
@@ -316,7 +302,11 @@ class OrderController(http.Controller):
 
         return True
 
-    def _create_product_attributes(self, item, redis_obj):
+    def _get_spu_map_redis_key(self, website_name):
+        return f'{config['odoo_product_id_hash_key']}:{config['app_env']}'
+        return f'{config['odoo_product_id_hash_key']}:{config['app_env']}:{website_name}'
+
+    def _create_product_attributes(self, item, redis_obj, redis_key):
         """
         创建商品属性 并返回变体值
         1.商品属性: product.attribute
@@ -332,7 +322,6 @@ class OrderController(http.Controller):
 
             # 查找或创建spu
             default_code = item.get('default_code').lower()
-            redis_key = config['odoo_product_id_hash_key'] + ':' + config['app_env']
             redis_field = f'{default_code}'
             product_template_id = redis_obj.hget(redis_key, redis_field)
             if not product_template_id:
@@ -526,32 +515,30 @@ class OrderController(http.Controller):
 
     def _create_order(self, data, customer_id, currency_id):
         """创建订单"""
-        # try:
-        order = data.get('order')
+        try:
+            order = data.get('order')
 
-        formatted_date = self._format_created_at(order['created_at'])
+            formatted_date = self._format_created_at(order['created_at'])
 
-        order_data = {
-            'partner_id'    : int(customer_id),
-            'origin'        : order['order_number'],
-            'date_order'    : formatted_date,
-            'state'         : 'sale',
-            'create_date'   : formatted_date,
-            'invoice_status': 'to invoice',
-            'currency_id'   : currency_id,
-            'amount_total'  : float(order['grand_total']),
-            'amount_tax'    : float(order['tax_amount']),
-            'warehouse_id'  : self._get_warehouse_id(order),
-            'name'          : order['name'],
-            'website_id'    : self._get_website_id(order['website_name']),
-        }
-        new_order = request.env['sale.order'].sudo().create(order_data)
-        new_order.action_confirm()
-        # except Exception as e:
-        #     _logger.error("Failed to _create_order: %s", str(e))
-        #     raise ValueError("Failed to _create_order: %s", str(e))
-
-        # print(order_data)
+            order_data = {
+                'partner_id'    : int(customer_id),
+                'origin'        : order['order_number'],
+                'date_order'    : formatted_date,
+                'state'         : 'sale',
+                'create_date'   : formatted_date,
+                'invoice_status': 'to invoice',
+                'currency_id'   : currency_id,
+                'amount_total'  : float(order['grand_total']),
+                'amount_tax'    : float(order['tax_amount']),
+                'warehouse_id'  : self._get_warehouse_id(order),
+                'name'          : order['name'],
+                'website_id'    : self._get_website_id(order['website_name']),
+            }
+            new_order = request.env['sale.order'].sudo().create(order_data)
+            new_order.action_confirm()
+        except Exception as e:
+            _logger.error("Failed to _create_order: %s", str(e))
+            raise ValueError("Failed to _create_order: %s", str(e))
 
         return new_order
 
