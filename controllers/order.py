@@ -79,7 +79,7 @@ class OrderController(http.Controller):
             currency = self._get_currency(data)
 
             order_info = request.env['sale.order'].sudo().search([
-                ('origin', '=', order['order_number']),
+                ('origin', '=', order['name']),
             ], limit=1)
 
             is_add = False
