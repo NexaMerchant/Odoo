@@ -142,7 +142,7 @@ class OrderController(http.Controller):
                             'product_id': variant_id,
                             'product_uom_qty': qty,
                             'price_unit': price_unit,
-                            'currency_id': currency.id,
+                            'currency_id': currency_id,
                             'discount': discount_percent
                         })
 
@@ -154,7 +154,7 @@ class OrderController(http.Controller):
                         'type': 'consu',
                         'product_id': redis_obj.hget(redis_key, redis_field),
                         'default_code': item.get('default_code', ''),
-                        'currency_id': currency.id,
+                        'currency_id': currency_id,
                         'uom_id': variant.product_tmpl_id.uom_id.id,
                         'categ_id': variant.product_tmpl_id.categ_id.id,
                     }
