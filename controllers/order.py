@@ -79,7 +79,7 @@ class OrderController(http.Controller):
             pricelist_id, currency_id = self._get_currency(data)
 
             order_info = request.env['sale.order'].sudo().search([
-                ('origin', '=', order['name']),
+                ('name', '=', order['name']),
             ], limit=1)
 
             is_add = False
@@ -88,6 +88,12 @@ class OrderController(http.Controller):
                     return {
                         'success': False,
                         'message': '订单已存在，状态:' + order_info.state,
+                        'status': 401
+                    }
+                else:
+                    return {
+                        'success': False,
+                        'message': '订单已存在',
                         'status': 401
                     }
                 order_id = order_info.id
