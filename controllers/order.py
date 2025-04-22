@@ -339,7 +339,7 @@ class OrderController(http.Controller):
                         'name': item.get('name', ''),
                         'description': sku.get('description', ''),
                         'list_price': float(item.get('price', 0)),
-                        'type': 'consu',
+                        'type': 'product',
                     })
                     product_template_id = product_template.id
                 else:
