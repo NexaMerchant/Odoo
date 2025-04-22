@@ -430,12 +430,26 @@ class OrderController(http.Controller):
 
             variant.sudo().write(update_vals)
 
+            # 获取所有变体
+            product_template = request.env['product.template'].sudo().browse(product_template_id)
+            self._auto_fill_variant_default_codes(product_template)
+
             return variant
 
         except Exception as e:
             _, _, tb = sys.exc_info()
             line_number = tb.tb_lineno
             raise ValueError(f"111 Failed to create product attributes---: { str(e)}. line_number: {line_number}")
+
+    def _auto_fill_variant_default_codes(self, template):
+        '''
+        自动填充变体的sku
+        '''
+        for var in template.product_variant_ids:
+            if not var.default_code:
+                attrs = var.product_template_attribute_value_ids.mapped('product_attribute_value_id.name')
+                code_suffix = '-'.join(attrs)
+                var.default_code = f"{code_suffix.upper()}"
 
     def _get_product_img(self, variant_id, image_src):
         """获取产品图片，支持缓存和重复利用
