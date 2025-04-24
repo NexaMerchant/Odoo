@@ -346,6 +346,8 @@ class OrderController(http.Controller):
                     product_template_id = product_template.id
 
                 redis_obj.hset(redis_key, redis_field, int(product_template_id))
+            else:
+                product_template = request.env['product.template'].sudo().browse(int(product_template_id))
 
             product_template_id = int(product_template_id)
 
