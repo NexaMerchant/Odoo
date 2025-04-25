@@ -22,6 +22,100 @@ class OrderController(http.Controller):
     _name = 'nexamerchant.order'
     _description = 'Order Management'
 
+    @http.route('/api/nexamerchant/external_order', type='json', auth='public', methods=['POST'], csrf=True, cors='*')
+    def create_external_order(self, **kwargs):
+        """
+        创建临时订单接口
+        """
+        # 鉴权
+        request_token = request.httprequest.headers.get('Authorization')
+        expected_token = request.env['ir.config_parameter'].sudo().get_param('nexa.api_token')
+        if not request_token or request_token != f'Bearer {expected_token}':
+            raise werkzeug.exceptions.Forbidden("Invalid or missing token.")
+
+        # 获取请求数据
+        data = request.httprequest.data
+        if not data:
+            return {
+                'success': False,
+                'message': 'No data provided',
+                'status': 400
+            }
+
+
+        data = json.loads(data)
+        order = data.get('order')
+
+        # 获取国家id
+        country = self._get_country(data)
+        if not country or not country.id:
+            return {
+                'success': False,
+                'message': '国家信息获取失败' + json.dumps(order['shipping_address']),
+                'status': 401
+            }
+
+        # 获取区域id
+        state_id = self._get_state(data, country.id)
+
+        # 获取客户id
+        customer = self._get_or_create_customer(data, state_id, country.id)
+
+        # 获取货币id
+        pricelist_id, currency_id = self._get_currency(data)
+
+        order_info = request.env['sale.order'].sudo().search([
+            ('name', '=', order['name']),
+        ], limit=1)
+
+        if order_info:
+            return {
+                'success': False,
+                'message': '订单已存在，状态:' + order_info.state,
+                'status': 401
+            }
+        else:
+            # 新增
+            try:
+                order_info = self._create_order(data, customer.id, pricelist_id, currency_id)
+                if order_info:
+                    order_id = order_info.id
+                else:
+                    return {
+                        'success': False,
+                        'message': '订单创建失败001',
+                        'status': 401
+                    }
+            except Exception as e:
+                return {
+                    'success': False,
+                    'message': '订单创建失败3:' + str(e),
+                    'status': 401
+                }
+
+
+        # 处理订单详情
+        for item in order['line_items']:
+            sku = item['sku']
+            request.env['external.order.line'].sudo().create({
+                'sale_order_id': order_id,
+                'external_name': item.get('name'),
+                'external_sku': sku.get('product_sku'),
+                'quantity': item.get('qty_ordered'),
+                'price_unit': item['price'],
+                'discount_amount': item['discount_amount'],
+                'product_type': 'consu' if item['is_shipping'] else 'product',
+                'product_url': sku.get('product_url'),
+                'images': self._get_product_img(0, sku.get('img')),
+            })
+
+        return {
+            'success': True,
+            'message': '订单创建成功',
+            'status': 200
+        }
+
+
     @http.route('/api/nexamerchant/order', type='json', auth='public', methods=['POST'], csrf=True, cors='*')
     def create_order(self, **kwargs):
         """
@@ -462,6 +556,11 @@ class OrderController(http.Controller):
         Returns:
             base64编码的图片数据
         """
+        if not variant_id:
+            # 生成一个唯一临时id
+            import uuid
+            variant_id = str(uuid.uuid4())
+
         os.makedirs('images', exist_ok=True)
         image_path = f'images/{variant_id}.jpg'
         temp_path = f'images/{variant_id}.tmp'  # 临时文件路径
@@ -558,7 +657,7 @@ class OrderController(http.Controller):
                 'website_id'    : self._get_website_id(order['website_name']),
             }
             new_order = request.env['sale.order'].sudo().create(order_data)
-            new_order.action_confirm()
+            # new_order.action_confirm()
         except Exception as e:
             _logger.error("Failed to _create_order: %s", str(e))
             raise ValueError("Failed to _create_order: %s", str(e))
