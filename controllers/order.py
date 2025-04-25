@@ -556,6 +556,9 @@ class OrderController(http.Controller):
         Returns:
             base64编码的图片数据
         """
+        if not image_src:
+            return ''
+
         if not variant_id:
             # 生成一个唯一临时id
             import uuid
@@ -623,7 +626,10 @@ class OrderController(http.Controller):
             for path in [temp_path, image_path]:
                 if os.path.exists(path):
                     os.remove(path)
-            raise ValueError(f"图片处理失败: {str(e)}")
+
+            _, _, tb = sys.exc_info()
+            line_number = tb.tb_lineno
+            raise ValueError(f"图片处理失败line_number:{line_number}: {str(e)}")
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
