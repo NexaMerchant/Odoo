@@ -109,10 +109,18 @@ class OrderController(http.Controller):
                 'images': self._get_product_img(0, sku.get('img')),
             })
 
+        customer_info = self.safe_read(customer)
+        order_fields = request.env['sale.order'].fields_get().keys()
+        order_info = order_info.read(list(order_fields))[0]
+
         return {
             'success': True,
             'message': '订单创建成功',
-            'status': 200
+            'status': 200,
+            'data': {
+                'customer_data': customer_info,
+                'order_data': order_info,
+            }
         }
 
 
