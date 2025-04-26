@@ -42,86 +42,108 @@ class OrderController(http.Controller):
                 'status': 400
             }
 
+        response = {
+            'success': False,
+            'message': '',
+        }
 
-        data = json.loads(data)
-        order = data.get('order')
 
-        # 获取国家id
-        country = self._get_country(data)
-        if not country or not country.id:
-            return {
-                'success': False,
-                'message': '国家信息获取失败' + json.dumps(order['shipping_address']),
-                'status': 401
-            }
+        try:
+            data = json.loads(data)
+            order = data.get('order')
 
-        # 获取区域id
-        state_id = self._get_state(data, country.id)
-
-        # 获取客户id
-        customer = self._get_or_create_customer(data, state_id, country.id)
-
-        # 获取货币id
-        pricelist_id, currency_id = self._get_currency(data)
-
-        order_info = request.env['sale.order'].sudo().search([
-            ('name', '=', order['name']),
-        ], limit=1)
-
-        if order_info:
-            return {
-                'success': False,
-                'message': '订单已存在，状态:' + order_info.state,
-                'status': 401
-            }
-        else:
-            # 新增
-            try:
-                order_info = self._create_order(data, customer.id, pricelist_id, currency_id)
-                if order_info:
-                    order_id = order_info.id
-                else:
-                    return {
-                        'success': False,
-                        'message': '订单创建失败001',
-                        'status': 401
-                    }
-            except Exception as e:
+            # 获取国家id
+            country = self._get_country(data)
+            if not country or not country.id:
                 return {
                     'success': False,
-                    'message': '订单创建失败3:' + str(e),
+                    'message': '国家信息获取失败' + json.dumps(order['shipping_address']),
                     'status': 401
                 }
 
+            # 获取区域id
+            state_id = self._get_state(data, country.id)
 
-        # 处理订单详情
-        for item in order['line_items']:
-            sku = item['sku']
-            request.env['external.order.line'].sudo().create({
-                'sale_order_id': order_id,
-                'external_name': item.get('name'),
-                'external_sku': sku.get('product_sku'),
-                'quantity': item.get('qty_ordered'),
-                'price_unit': item['price'],
-                'discount_amount': item['discount_amount'],
-                'product_type': 'consu' if item['is_shipping'] else 'product',
-                'product_url': sku.get('product_url'),
-                'images': self._get_product_img(0, sku.get('img')),
-            })
+            # 获取客户id
+            customer = self._get_or_create_customer(data, state_id, country.id)
 
-        customer_info = self.safe_read(customer)
-        order_fields = request.env['sale.order'].fields_get().keys()
-        order_info = order_info.read(list(order_fields))[0]
+            # 获取货币id
+            pricelist_id, currency_id = self._get_currency(data)
 
-        return {
-            'success': True,
-            'message': '订单创建成功',
-            'status': 200,
-            'data': {
-                'customer_data': customer_info,
-                'order_data': order_info,
+            order_info = request.env['sale.order'].sudo().search([
+                ('name', '=', order['name']),
+            ], limit=1)
+
+            if order_info:
+                return {
+                    'success': False,
+                    'message': '订单已存在，状态:' + order_info.state,
+                    'status': 401
+                }
+            else:
+                # 新增
+                try:
+                    order_info = self._create_order(data, customer.id, pricelist_id, currency_id)
+                    if order_info:
+                        order_id = order_info.id
+                    else:
+                        return {
+                            'success': False,
+                            'message': '订单创建失败001',
+                            'status': 401
+                        }
+                except Exception as e:
+                    return {
+                        'success': False,
+                        'message': '订单创建失败3:' + str(e),
+                        'status': 401
+                    }
+
+
+            # 处理订单详情
+            for item in order['line_items']:
+                sku = item['sku']
+                request.env['external.order.line'].sudo().create({
+                    'sale_order_id': order_id,
+                    'external_name': item.get('name'),
+                    'external_sku': sku.get('product_sku'),
+                    'quantity': item.get('qty_ordered'),
+                    'price_unit': item['price'],
+                    'discount_amount': item['discount_amount'],
+                    'product_type': 'consu' if item['is_shipping'] else 'product',
+                    'product_url': sku.get('product_url'),
+                    'images': self._get_product_img(0, sku.get('img')),
+                })
+
+            customer_info = self.safe_read(customer)
+            if 'avatar_1920' in customer_info.keys():
+                del customer_info['avatar_1920']
+                del customer_info['avatar_1024']
+                del customer_info['avatar_512']
+                del customer_info['avatar_256']
+                del customer_info['avatar_128']
+            order_fields = request.env['sale.order'].fields_get().keys()
+            order_info = order_info.read(list(order_fields))[0]
+
+
+
+            return {
+                'success': True,
+                'message': '订单创建成功',
+                'status': 200,
+                'data': {
+                    'customer_data': customer_info,
+                    'order_data': order_info,
+                    'product_data': []
+                }
             }
-        }
+
+        except Exception as e:
+            _, _, tb = sys.exc_info()
+            line_number = tb.tb_lineno
+            response['message'] = f"订单创建失败: {str(e)} line:{str(line_number)}"
+
+        return response
 
 
     @http.route('/api/nexamerchant/order', type='json', auth='public', methods=['POST'], csrf=True, cors='*')
