@@ -147,7 +147,7 @@ class OrderController(http.Controller):
 
 
     @http.route('/api/nexamerchant/order', type='json', auth='public', methods=['POST'], csrf=True, cors='*')
-    def create_order(self, **kwargs):
+    def sync_order(self, **kwargs):
         """
         创建订单接口
         """
@@ -882,6 +882,153 @@ class OrderController(http.Controller):
 
         if not isinstance(data.get('lines'), list) or len(data['lines']) == 0:
             raise ValueError("订单必须包含至少一个商品")
+
+    @http.route('/api/nexamerchant/sync_products', type='json', auth='public', methods=['POST'], csrf=False)
+    def sync_products(self, **kwargs):
+        data = request.httprequest.data
+        if not data:
+            return {
+                'success': False,
+                'message': 'No data provided',
+                'status': 400
+            }
+
+        response = {
+            'success': False,
+            'message': '',
+        }
+
+        redis_host = config['redis_host']
+        redis_port = config['redis_port']
+        redis_db = config['redis_db']
+        redis_password = config['redis_password']
+        redis_obj = redis.Redis(host=redis_host, port=redis_port, db=redis_db, password=redis_password)
+        redis_key = f'{config['odoo_product_id_hash_key']}:{config['app_env']}'
+
+        try:
+            product = json.loads(data)
+            attributes = product.get('attributes', {})
+
+            # 查找或创建spu
+            default_code = product.get('default_code').lower()
+            redis_field = f'{default_code}'
+            product_template_id = redis_obj.hget(redis_key, redis_field)
+            if not product_template_id:
+                product_template = request.env['product.template'].sudo().search([
+                    ('default_code', '=', default_code),
+                ], limit=1)
+                if not product_template:
+                    product_template = request.env['product.template'].sudo().create({
+                        'name': product.get('name', ''),
+                        'description': product.get('description', ''),
+                        'list_price': float(product.get('price', 0)),
+                        'type': 'product',
+                    })
+                    product_template_id = product_template.id
+                else:
+                    product_template_id = product_template.id
+
+                redis_obj.hset(redis_key, redis_field, int(product_template_id))
+            else:
+                product_template = request.env['product.template'].sudo().browse(int(product_template_id))
+
+            product_template_id = int(product_template_id)
+
+            # 批量处理属性
+            attribute_value_ids = []
+            for attribute in attributes:
+                attribute_name = attribute.get('attribute_name')
+                option_label = attribute.get('option_label')
+
+                if not attribute_name or not option_label:
+                    continue
+
+                # 1. 查找或创建属性
+                product_attribute = request.env['product.attribute'].sudo().search([
+                    ('name', '=', attribute_name),
+                    ('create_variant', '=', 'always')
+                ], limit=1) or request.env['product.attribute'].sudo().create({
+                    'name': attribute_name,
+                    'create_variant': 'always',
+                })
+
+                # 2. 查找或创建属性值
+                attribute_value = request.env['product.attribute.value'].sudo().search([
+                    ('name', '=', option_label),
+                    ('attribute_id', '=', product_attribute.id)
+                ], limit=1) or request.env['product.attribute.value'].sudo().create({
+                    'name': option_label,
+                    'attribute_id': product_attribute.id
+                })
+                attribute_value_ids.append(attribute_value.id)
+
+                # 3. 处理属性线
+                product_attribute_line = request.env['product.template.attribute.line'].sudo().search([
+                    ('product_tmpl_id', '=', product_template_id),
+                    ('attribute_id', '=', product_attribute.id),
+                ], limit=1)
+
+                if product_attribute_line:
+                    existing_value_ids = product_attribute_line.value_ids.mapped('id')
+                    if attribute_value.id not in existing_value_ids:
+                        product_attribute_line.write({'value_ids': [(4, attribute_value.id)]})
+                else:
+                    request.env['product.template.attribute.line'].sudo().create({
+                        'product_tmpl_id': product_template_id,
+                        'attribute_id': product_attribute.id,
+                        'value_ids': [(6, 0, [attribute_value.id])],  # 6,0 确保唯一
+                    })
+
+            # 4. 查找匹配的变体
+            domain = [('product_tmpl_id', '=', product_template_id)]
+            if attribute_value_ids:
+                domain.append(('product_template_attribute_value_ids.product_attribute_value_id', 'in', attribute_value_ids))
+            variants = request.env['product.product'].sudo().search(domain)
+            # 找出属性值完全匹配的变体
+            for var in variants:
+                var_value_ids = set(var.product_template_attribute_value_ids.mapped('product_attribute_value_id.id'))
+                if set(attribute_value_ids) == var_value_ids:
+                    variant = var
+                    break
+            else:
+                variant = None
+
+            if not variant:
+                product_template._create_variant_ids()
+                variant = request.env['product.product'].sudo().search(domain, limit=1)
+
+                if not variant:
+                    variant = request.env['product.product'].sudo().create({
+                        'product_tmpl_id': product_template_id,
+                        'attribute_value_ids': [(6, 0, attribute_value_ids)],
+                        'default_code': product.get('product_sku')
+                    })
+
+            # 5. 更新变体信息
+            update_vals = {
+                'default_code': product.get('product_sku'),
+            }
+            if product.get('img'):
+                image_base64 = self._get_product_img(variant.id, product.get('img'))
+                if image_base64:
+                    update_vals['image_1920'] = image_base64
+
+            variant.sudo().write(update_vals)
+
+            # 获取所有变体
+            product_template = request.env['product.template'].sudo().browse(product_template_id)
+            self._auto_fill_variant_default_codes(product_template)
+
+            response['success'] = True
+
+            return response
+
+        except Exception as e:
+            _, _, tb = sys.exc_info()
+            line_number = tb.tb_lineno
+            response['message'] = f"Failed to create product attributes---: { str(e)}. line_number: {line_number}"
+
+        return response
 
     @http.route('/api/nexamerchant/order/<int:order_id>', type='json', auth='public', methods=['PUT'], csrf=False)
     def update_order(self, order_id, **kwargs):
