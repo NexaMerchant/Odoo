@@ -103,6 +103,21 @@ class OrderController(http.Controller):
             # 处理订单详情
             for item in order['line_items']:
                 sku = item['sku']
+
+                # 先判断是否已配对 若已配对则直接创建订单详情
+                external_sku_mapping = request.env['external.sku.mapping'].sudo().search([
+                    ('external_sku', '=', sku.get('product_sku'))
+                ], limit=1)
+                if external_sku_mapping:
+                    request.env['sale.order.line'].sudo().create({
+                        'order_id': order_id,
+                        'product_id': external_sku_mapping.product_id,
+                        'product_uom_qty': item.get('qty_ordered'),
+                        'price_unit': item['price'],
+                        'currency_id': currency_id,
+                        'discount': item['discount_amount']
+                    })
+
                 request.env['external.order.line'].sudo().create({
                     'sale_order_id': order_id,
                     'external_name': item.get('name'),
@@ -124,8 +139,6 @@ class OrderController(http.Controller):
                 del customer_info['avatar_128']
             order_fields = request.env['sale.order'].fields_get().keys()
             order_info = order_info.read(list(order_fields))[0]
-
-
 
             return {
                 'success': True,
@@ -910,11 +923,11 @@ class OrderController(http.Controller):
         redis_key = f'{config['odoo_product_id_hash_key']}:{config['app_env']}'
 
         try:
-            product = json.loads(data)
-            attributes = product.get('attributes', {})
+            product_info = json.loads(data)
+            attributes = product_info.get('attributes', {})
 
             # 查找或创建spu
-            default_code = product.get('default_code').lower()
+            default_code = product_info.get('default_code').lower()
             redis_field = f'{default_code}'
             product_template_id = redis_obj.hget(redis_key, redis_field)
             if not product_template_id:
@@ -923,9 +936,9 @@ class OrderController(http.Controller):
                 ], limit=1)
                 if not product_template:
                     product_template = request.env['product.template'].sudo().create({
-                        'name': product.get('name', ''),
-                        'description': product.get('description', ''),
-                        'list_price': float(product.get('price', 0)),
+                        'name': product_info.get('name', ''),
+                        'description': product_info.get('description', ''),
+                        'list_price': float(product_info.get('price', 0)),
                         'type': 'product',
                     })
                     product_template_id = product_template.id
@@ -1005,19 +1018,22 @@ class OrderController(http.Controller):
                     variant = request.env['product.product'].sudo().create({
                         'product_tmpl_id': product_template_id,
                         'attribute_value_ids': [(6, 0, attribute_value_ids)],
-                        'default_code': product.get('product_sku')
+                        'default_code': product_info.get('product_sku')
                     })
 
             # 5. 更新变体信息
             update_vals = {
-                'default_code': product.get('product_sku'),
+                'default_code': product_info.get('product_sku'),
             }
-            if product.get('img'):
-                image_base64 = self._get_product_img(variant.id, product.get('img'))
+            if product_info.get('img'):
+                image_base64 = self._get_product_img(variant.id, product_info.get('img'))
                 if image_base64:
                     update_vals['image_1920'] = image_base64
 
             variant.sudo().write(update_vals)
+
+            # 生成报关信息
+            self._create_ext_product(variant.id, product_info)
 
             # 获取所有变体
             product_template = request.env['product.template'].sudo().browse(product_template_id)
@@ -1033,6 +1049,20 @@ class OrderController(http.Controller):
             response['message'] = f"Failed to create product attributes---: { str(e)}. line_number: {line_number}"
 
         return response
+
+    def _create_ext_product(self, variant_id, product):
+        '''
+        创建报关信息
+        '''
+        request.env['products_ext.products_ext'].sudo().search([
+            ('product_id', '=', variant_id)
+        ], limit=1) or request.env['products_ext.products_ext'].sudo().create({
+            'product_id': variant_id,
+            'product_url': product.get('product_url'),
+            'declared_price': product.get('declared_price'),
+            'declared_name_cn': product.get('declared_name_cn'),
+            'declared_name_en': product.get('declared_name_en'),
+        })
 
     @http.route('/api/nexamerchant/order/<int:order_id>', type='json', auth='public', methods=['PUT'], csrf=False)
     def update_order(self, order_id, **kwargs):
