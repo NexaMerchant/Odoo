@@ -618,16 +618,20 @@ class OrderController(http.Controller):
                 'User-Agent': 'Mozilla/5.0',
                 'Accept': 'image/webp,image/*,*/*;q=0.8'
             }
-            response = requests.get(image_src, headers=headers, timeout=15)
-            response.raise_for_status()
+
+            with requests.get(image_src, stream=True) as r:
+                r.raise_for_status()
+                with open(temp_path, 'wb') as f:
+                    for chunk in r.iter_content(chunk_size=8192):
+                        f.write(chunk)
 
             # 计算文件哈希用于验证
             # file_hash = hashlib.md5(response.content).hexdigest()
             # print(f"下载完成，文件哈希: {file_hash}")
 
             # 先保存到临时文件
-            with open(temp_path, 'wb') as f:
-                f.write(response.content)
+            # with open(temp_path, 'wb') as f:
+            #     f.write(response.content)
 
             # 验证并转换图片
             try:
