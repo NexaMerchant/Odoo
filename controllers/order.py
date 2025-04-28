@@ -111,7 +111,7 @@ class OrderController(http.Controller):
                 if external_sku_mapping:
                     request.env['sale.order.line'].sudo().create({
                         'order_id': order_id,
-                        'product_id': external_sku_mapping.product_id,
+                        'product_id': external_sku_mapping.product_id.id,
                         'product_uom_qty': item.get('qty_ordered'),
                         'price_unit': item['price'],
                         'currency_id': currency_id,
