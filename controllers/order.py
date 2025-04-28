@@ -624,6 +624,7 @@ class OrderController(http.Controller):
             except Exception as e:
                 print(f"现有图片损坏，重新下载: {e}")
                 os.remove(image_path)  # 删除损坏文件
+                return ''
 
         # 2. 下载并处理新图片
         try:
@@ -676,10 +677,13 @@ class OrderController(http.Controller):
 
             _, _, tb = sys.exc_info()
             line_number = tb.tb_lineno
-            raise ValueError(f"图片处理失败line_number:{line_number}: {str(e)}")
+            # raise ValueError(f"图片处理失败line_number:{line_number}: {str(e)}")
+            return ''
         finally:
             if os.path.exists(temp_path):
                 os.remove(temp_path)
+
+        return ''
 
     def _format_created_at(self, created_at):
         """格式化日期"""
