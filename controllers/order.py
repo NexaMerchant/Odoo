@@ -104,6 +104,18 @@ class OrderController(http.Controller):
             for item in order['line_items']:
                 sku = item['sku']
 
+                create_data = {
+                    'sale_order_id': order_id,
+                    'external_name': item.get('name'),
+                    'external_sku': sku.get('product_sku'),
+                    'quantity': item.get('qty_ordered'),
+                    'price_unit': item['price'],
+                    'discount_amount': item['discount_amount'],
+                    'product_type': 'consu' if item['is_shipping'] else 'product',
+                    'product_url': sku.get('product_url'),
+                    'images': self._get_product_img(0, sku.get('img')),
+                }
+
                 # 先判断是否已配对 若已配对则直接创建订单详情
                 external_sku_mapping = request.env['external.sku.mapping'].sudo().search([
                     ('external_sku', '=', sku.get('product_sku'))
@@ -118,17 +130,10 @@ class OrderController(http.Controller):
                         'discount': item['discount_amount']
                     })
 
-                request.env['external.order.line'].sudo().create({
-                    'sale_order_id': order_id,
-                    'external_name': item.get('name'),
-                    'external_sku': sku.get('product_sku'),
-                    'quantity': item.get('qty_ordered'),
-                    'price_unit': item['price'],
-                    'discount_amount': item['discount_amount'],
-                    'product_type': 'consu' if item['is_shipping'] else 'product',
-                    'product_url': sku.get('product_url'),
-                    'images': self._get_product_img(0, sku.get('img')),
-                })
+                    create_data['product_id'] = external_sku_mapping.product_id.id
+                    create_data['confirmed'] = True
+
+                request.env['external.order.line'].sudo().create(create_data)
 
             customer_info = self.safe_read(customer)
             if 'avatar_1920' in customer_info.keys():
