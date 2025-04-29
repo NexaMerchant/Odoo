@@ -311,7 +311,6 @@ class OrderController(http.Controller):
             if is_add:
                 payment_info = order.get('payment')
                 method_str = payment_info.get('method')
-                # return payment_info
                 # try:
                 #     invoice = order_info._create_invoices()
                 #     invoice.action_post()
@@ -348,7 +347,6 @@ class OrderController(http.Controller):
                     if 'product_image' in order_info.keys():
                         del order_info['product_image']
             except Exception as e:
-                print('An exception occurred')
                 _, _, tb = sys.exc_info()
                 line_number = tb.tb_lineno
                 return {
@@ -372,24 +370,14 @@ class OrderController(http.Controller):
             })
 
         except ValueError as ve:
-            _logger.error(f"验证错误: {str(ve)}")
-            # 打印异常信息 + 行号
-            traceback.print_exc()  # 打印完整堆栈（包括行号）
-            # 或者只获取当前异常的行号
             _, _, tb = sys.exc_info()
             line_number = tb.tb_lineno
             response['message'] = f"数据验证错误: {str(ve)} line:{str(line_number)}"
 
         except Exception as e:
-
-            _logger.exception(f"订单创建失败1: {str(e)}")
-
-            # 打印异常信息 + 行号
-            traceback.print_exc()  # 打印完整堆栈（包括行号）
-            # 或者只获取当前异常的行号
             _, _, tb = sys.exc_info()
             line_number = tb.tb_lineno
-            response['message'] = f"订单创建失败2: {str(e)} line:{str(line_number)}"
+            response['message'] = f"订单创建失败: {str(e)} line:{str(line_number)}"
 
         return response
 
