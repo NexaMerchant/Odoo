@@ -121,13 +121,25 @@ class OrderController(http.Controller):
                     ('external_sku', '=', sku.get('product_sku'))
                 ], limit=1)
                 if external_sku_mapping:
+
+                    price_unit = Decimal(str(item['price']))
+                    qty = Decimal(str(item['qty_ordered']))
+                    discount_amount = Decimal(str(item['discount_amount']))
+
+                    # 计算折扣值 保留四位小数
+                    if price_unit * qty != 0:
+                        discount_percent = (discount_amount / (price_unit * qty)) * Decimal('100')
+                        discount_percent = discount_percent.quantize(Decimal('0.0001'), rounding=ROUND_HALF_UP)
+                    else:
+                        discount_percent = Decimal('0.0')
+
                     request.env['sale.order.line'].sudo().create({
                         'order_id': order_id,
                         'product_id': external_sku_mapping.product_id.id,
                         'product_uom_qty': item.get('qty_ordered'),
                         'price_unit': item['price'],
                         'currency_id': currency_id,
-                        'discount': item['discount_amount']
+                        'discount': discount_percent
                     })
 
                     create_data['product_id'] = external_sku_mapping.product_id.id
