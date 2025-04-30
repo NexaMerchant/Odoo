@@ -89,13 +89,13 @@ class OrderController(http.Controller):
                     else:
                         return {
                             'success': False,
-                            'message': '订单创建失败001',
+                            'message': '订单创建失败',
                             'status': 401
                         }
                 except Exception as e:
                     return {
                         'success': False,
-                        'message': '订单创建失败3:' + str(e),
+                        'message': '订单创建失败:' + str(e),
                         'status': 401
                     }
 
