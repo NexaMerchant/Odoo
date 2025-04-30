@@ -26,12 +26,12 @@ jobs:
       env:
         GITHUB_SHA_X: ${GITHUB_SHA}
       with:
-        host: ${{ secrets.SSH_HOST_ERP }}  
+        host: ${{ secrets.SSH_HOST_ERP }}
         username: ${{ secrets.SSH_USERNAME_ERP }}
         key: ${{ secrets.DEPLOY_KEY_ERP }}
         port: ${{secrets.SSH_PORT_ERP }}
         script: |
           cd /www/wwwroot/ops/
-          ./auto_return_and_update_odoo_module.sh sale_order_batch > output.log 2>&1 &
+          ./auto_return_and_update_odoo_module.sh OdooPlugin > output.log 2>&1 &
           echo "Script started in the background. Check output.log for details."
 
