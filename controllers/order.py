@@ -834,11 +834,14 @@ class OrderController(http.Controller):
             'city'        : order['shipping_address']['city'],
             'zip'         : order['shipping_address']['zip'],
             'country_code': order['shipping_address']['country'],
-            'state_id'    : state_id,
+
             'country_id'  : country_id,
             'website_id'  : config['usa_website_id'],
             'type'        : 'delivery',
         }
+
+        if state_id:
+            customer_data['state_id'] = state_id
 
         Partner = request.env['res.partner'].sudo()
 
