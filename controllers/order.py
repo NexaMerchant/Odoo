@@ -113,7 +113,7 @@ class OrderController(http.Controller):
                     'discount_amount': item['discount_amount'],
                     'product_type': 'consu' if item['is_shipping'] else 'product',
                     'product_url': sku.get('product_url'),
-                    'images': self._get_product_img(0, sku.get('img')),
+                    'images_binary': self._get_product_img(0, sku.get('img')),
                 }
 
                 # 先判断是否已配对 若已配对则直接创建订单详情
