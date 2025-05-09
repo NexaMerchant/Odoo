@@ -104,6 +104,8 @@ class OrderController(http.Controller):
             for item in order['line_items']:
                 sku = item['sku']
 
+                images = self._get_product_img(0, sku.get('img'))
+
                 create_data = {
                     'sale_order_id': order_id,
                     'external_name': item.get('name'),
@@ -113,7 +115,8 @@ class OrderController(http.Controller):
                     'discount_amount': item['discount_amount'],
                     'product_type': 'consu' if item['is_shipping'] else 'product',
                     'product_url': sku.get('product_url'),
-                    'images_binary': self._get_product_img(0, sku.get('img')),
+                    'images': images,
+                    'images_binary': images
                 }
 
                 # 先判断是否已配对 若已配对则直接创建订单详情
