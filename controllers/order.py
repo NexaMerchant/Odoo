@@ -66,6 +66,12 @@ class OrderController(http.Controller):
 
             # 获取客户id
             customer = self._get_or_create_customer(data, state_id, country.id)
+            if not customer:
+                return {
+                    'success': False,
+                    'message': '客户信息获取失败',
+                    'status': 401
+                }
 
             # 获取货币id
             pricelist_id, currency_id = self._get_currency(data)
